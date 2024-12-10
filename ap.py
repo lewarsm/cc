@@ -48,7 +48,9 @@ handler.setFormatter(logging.Formatter('%(message)s'))
 logger.addHandler(handler)
 
 # Ensure errors.json exists
-        
+if not os.path.exists("errors.json"):
+    with open("errors.json", "w") as f:
+        f.write("")        
 
 #Silence Self Signed Certificate Errors
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -644,9 +646,6 @@ def fetch_well_known(endpoint, result_text):
     except Exception as e:
         result_text.delete(1.0, tk.END)
         result_text.insert(tk.END, f"Error fetching well-known endpoint: {e}")
-
-
-
 
 def open_oauth_window(theme):
     oauth_window = CustomWindow("OAuth Debugger", 1200, 600, theme)
@@ -1682,8 +1681,17 @@ class NSLookup:
                     self.table.insert("", "end", values=(domain, name, ip_address, hanger, timestamp))
                 else:
                     raise Exception("No valid DNS records found")
+            except dns.resolver.NoAnswer:
+                logger.error(f"No answer for domain: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "No answer", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            except dns.resolver.NXDOMAIN:
+                logger.error(f"Domain does not exist: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "Domain does not exist", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            except dns.exception.Timeout:
+                logger.error(f"Timeout while resolving domain: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "Timeout", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             except Exception as e:
-                log_error(domain, e)
+                logger.error(f"Error resolving domain {domain}: {e}")
                 self.table.insert("", "end", values=(domain, "Error", str(e), "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         self.master.after(600000, self.update_nslookup_table)  # Auto-refresh every 10 minutes
 

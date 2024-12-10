@@ -1,7 +1,7 @@
 [
     {
-        "subject": "www.google.com",
-        "error": "The DNS response does not contain an answer to the question: www.google.com. IN CNAME",
-        "timestamp": "2024-12-09 23:45:51"
+        "subject": "server1",
+        "error": "The DNS query name does not exist: server1.",
+        "timestamp": "2024-12-10 00:32:43"
     }
-]
+]Domain does not exist: server1
