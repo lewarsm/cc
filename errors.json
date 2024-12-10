@@ -1,0 +1,7 @@
+[
+    {
+        "subject": "www.google.com",
+        "error": "The DNS response does not contain an answer to the question: www.google.com. IN CNAME",
+        "timestamp": "2024-12-09 23:45:51"
+    }
+]

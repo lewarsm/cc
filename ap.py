@@ -801,7 +801,7 @@ class OIDCDebugger:
 
         self.well_known_dropdown['values'] = [
             'https://server/.well-known/openid-configuration',
-            'https://server1/.well-known/openid-configuration'
+            'https://www.google.com/.well-known/openid-configuration'
         ]
         self.well_known_dropdown.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
@@ -1635,7 +1635,7 @@ class NSLookup:
             with open("domains.json", "r") as file:
                 return json.load(file)
         except FileNotFoundError:
-            return ["server1"]
+            return ["www.google.com"]
 
     def save_domains(self):
         with open("domains.json", "w") as file:
@@ -1662,7 +1662,7 @@ class NSLookup:
         self.save_domains()
 
     def reset_domains(self):
-        self.domains = ["server1"]
+        self.domains = ["www.google.com"]
         self.save_domains()
         self.update_nslookup_table()
 
@@ -1789,8 +1789,8 @@ class HTTPRequest:
     def load_urls(self):
         if not os.path.exists("urls.json"):
             initial_data = [
-                {"url": "server1", "regex": "OK"},
-                {"url": "server2", "regex": "OK"}
+                {"url": "www.google.com", "regex": "OK"},
+                {"url": "www.mail.com", "regex": "OK"}
             ]
             with open("urls.json", "w") as file:
                 json.dump(initial_data, file)
@@ -1833,8 +1833,8 @@ class HTTPRequest:
 
     def reset_urls(self):
         self.urls = [
-            {"url": "server1", "regex": "OK"},
-            {"url": "server2", "regex": "OK"}
+            {"url": "www.google.com", "regex": "OK"},
+            {"url": "www.mail.com", "regex": "OK"}
         ]
         self.save_urls()
         self.update_http_table()
@@ -2014,10 +2014,10 @@ def backup_data(NSLookup, HTTPRequest):
             with open("domains.json", "r") as file:
                 nslookup_data=json.load(file)
         except FileNotFoundError:
-            nslookup_data=["server1"]]
+            nslookup_data=["www.google.com"]
         # Get HTTP Table
         if not os.path.exists("urls.json"):
-            http_data = [{"url" : "server1", "regex" : "ok" }]
+            http_data = [{"url" : "www.google.com", "regex" : "ok" }]
         with open("urls.json", "r") as file:
             http_data=json.load(file)
         #JOIN DATA
