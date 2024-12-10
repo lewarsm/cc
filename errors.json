@@ -1,7 +1,8 @@
 [
     {
-        "subject": "server1",
-        "error": "The DNS query name does not exist: server1.",
-        "timestamp": "2024-12-10 00:32:43"
+        "subject": "Play audio failed",
+        "error": "name 'BytesIO' is not defined",
+        "timestamp": "2024-12-10 00:57:43"
     }
 ]Domain does not exist: server1
+Domain does not exist: server1

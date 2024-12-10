@@ -59,14 +59,14 @@ warnings.filterwarnings("ignore")
 # Styling configurations
 NORD_STYLES = {
     "standard": {
-        "background": "#2E3440",
+        "background": "#304CB2",
         "foreground": "#D8DEE9",
         "highlight": "#88C0D0",
         "error": "#BF616A",
         "header": "#4C566A",
         "row_odd": "#3B4252",
         "row_even": "#434C5E",
-        "button": "#5E81AC",
+        "button": "#FFCA4F",
         "invert_button": "#BF616A"
     },
     "frost": {
@@ -1225,7 +1225,7 @@ class OIDCDebugger:
                 def base64url_encode(input):
                     return base64.urlsafe_b64encode(input).decode('utf-8').rstrip('=')
 
-                encoded_header = base64url_encode(json.dumps(header).encode('utf-8'))
+                encoded_header = base64url_encode(json.dumps(headers).encode('utf-8'))
                 encoded_payload = base64url_encode(json.dumps(payload).encode('utf-8'))
                 signature = base64.urlsafe_b64encode(
                     hmac.new(self.client_secret.encode('utf-8'), f"{encoded_header}.{encoded_payload}".encode('utf-8'), hashlib.sha256).digest()
@@ -1699,7 +1699,6 @@ class NSLookup:
         for key, value in hanger_mappings.items():
             if key in name:
                 return value
-        messagebox.showwarning("Unknown Hanger", f"The hanger for {name} is unknown.")
         return 'Unknown'
 
 class HTTPRequest:
@@ -1859,12 +1858,13 @@ class HTTPRequest:
             # Check if the URL resolves
             try:
                 socket.gethostbyname(prunedurl)
-            except socket.error:
-                log_error(f'{prunedurl}', "Socket failed")
-                
+            except socket.error as e:
+                error_message = f"Socket error for {prunedurl}: {e}"
+                logger.error(error_message)
+                self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))                
             else:
                 try:
-                    response = requests.get(f'https://{url}', verify=not self.ignore_ssl_verification)
+                    response = requests.get(f'https://{url}', verify=not self.ignore_ssl_verification, timeout=10)
                     status_text = response.text if len(response.text) > 0 else "No Response"
                     if regex and not re.search(regex, status_text):
                         status_text = "Pattern Failed"
@@ -1872,9 +1872,14 @@ class HTTPRequest:
                         status_text = "OK"
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     self.table.insert("", "end", values=(url, regex, response.status_code, status_text, timestamp))
+                except requests.exceptions.RequestException as e:
+                    error_message = f"HTTP request error for {url}: {e}"
+                    logger.error(error_message)
+                    self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 except Exception as e:
-                    self.table.insert("", "end", values=(url, regex, "Error", str(e), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                    log_error("HTTPRequest Error", e)
+                    error_message = f"Unexpected error for {url}: {e}"
+                    logger.error(error_message)
+                    self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         self.master.after(600000, self.update_http_table)  # Auto-refresh every 10 minutes
 
 class JWKSCheck:
