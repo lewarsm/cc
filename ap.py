@@ -3,39 +3,42 @@ import sys
 import json
 import socket
 import re  # Import the re module for regular expressions
-import dns.resolver
-import requests
 import hashlib
+import hmac
 import base64
 from datetime import datetime, timedelta
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
-import tkinter as tk
-from tkinter import ttk, colorchooser, filedialog, messagebox
+import time
 import subprocess
 import ssl
-import pygame
+import threading
+import webbrowser
+import logging
+from logging.handlers import TimedRotatingFileHandler
+import warnings
+
+import dns.resolver
+import requests
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from PIL import Image, ImageTk
 import socketserver
 import http.server
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
-import webbrowser
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
-#note that requests.packages.urllib3 is just an alias for urllib3
+import pygame
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
 from urllib.parse import urlencode, urlparse, parse_qs
-from io import BytesIO
-import uuid
-import random
-import string
 from OpenSSL import crypto
-import logging
-from logging.handlers import TimedRotatingFileHandler
+
+import tkinter as tk
+from tkinter import ttk, colorchooser, filedialog, messagebox
+
+# Application-specific imports
+
 
 # Configure logging
 logger = logging.getLogger("ErrorLogger")
@@ -46,7 +49,6 @@ logger.addHandler(handler)
 
 # Ensure errors.json exists
         
-import warnings
 
 #Silence Self Signed Certificate Errors
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -1220,10 +1222,6 @@ class OIDCDebugger:
                     "exp": now + 300,  # Token expires in 5 minutes
                     "iat": now
                 }
-                header = {
-                    "alg": "HS256",
-                    "typ": "JWT"
-                }
 
                 def base64url_encode(input):
                     return base64.urlsafe_b64encode(input).decode('utf-8').rstrip('=')
@@ -1377,7 +1375,7 @@ class OIDCDebugger:
                     "exp": now + 300,  # Token expires in 5 minutes
                     "iat": now
                 }
-                client_assertion = jwt.encode(payload, self.client_secret, algorithm="HS256")
+                client_assertion = base64.b64encode(json.dumps(payload).encode('utf-8')).decode('utf-8')
                 data["client_assertion"] = client_assertion
                 data["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
