@@ -72,7 +72,7 @@ class PingFederateClientApp:
         for i, theme_name in enumerate(NORD_STYLES.keys()):
             ttk.Radiobutton(toolbar, text=theme_name.capitalize(), variable=theme_var, value=theme_name, command=lambda: self.apply_theme(theme_var.get())).grid(row=0, column=i+1, padx=5, pady=5)
 
-        ttk.Button(toolbar, text="Customize Theme", command=self.customize_theme).grid(row=0, column=i+2, padx=5, pady=5)
+        ttk.Button(toolbar, text="Customize Theme", command=self.open_customize_theme_window).grid(row=0, column=i+2, padx=5, pady=5)
 
     def create_widgets(self):
         self.base_url_entry = tk.Entry(self.master)
@@ -112,30 +112,10 @@ class PingFederateClientApp:
         self.result_frame.grid_rowconfigure(0, weight=1)
         self.result_frame.grid_columnconfigure(0, weight=1)
 
-    def customize_theme(self):
-        theme_name = self.theme
-        theme = NORD_STYLES.get(theme_name, NORD_STYLES["standard"])
-
-        def choose_color(key):
-            color = colorchooser.askcolor(title=f"Choose {key} color", initialcolor=theme[key])[1]
-            if color:
-                theme[key] = color
-                self.apply_theme(theme_name)
-
-        customizer = tk.Toplevel(self.master)
-        customizer.title("Customize Theme")
-
-        for i, key in enumerate(theme.keys()):
-            ttk.Label(customizer, text=key.capitalize()).grid(row=i, column=0, padx=5, pady=5)
-            ttk.Button(customizer, text=f"Choose {key} color", command=lambda k=key: choose_color(k)).grid(row=i, column=1, padx=5, pady=5)
-
-        ttk.Button(customizer, text="Save Theme", command=lambda: self.save_custom_theme(theme_name, theme)).grid(row=i+1, column=0, columnspan=2, padx=5, pady=5)
-
-    def save_custom_theme(self, theme_name, theme):
-        NORD_STYLES[theme_name] = theme
-        with open("customtheme.json", "w") as file:
-            json.dump(NORD_STYLES, file, indent=4)
-        messagebox.showinfo("Success", "Theme saved successfully!")
+    def open_customize_theme_window(self):
+        customizer = CustomizeThemeWindow(self.master, self.theme)
+        self.master.wait_window(customizer.top)
+        self.apply_theme(self.theme)
 
     def fetch_clients(self):
         base_url = self.base_url_entry.get()
@@ -230,6 +210,31 @@ class PingFederateClientApp:
                 return policy_group_data
             else:
                 return None
+
+class CustomizeThemeWindow:
+    def __init__(self, master, theme_name):
+        self.top = tk.Toplevel(master)
+        self.top.title("Customize Theme")
+        self.theme_name = theme_name
+        self.theme = NORD_STYLES.get(theme_name, NORD_STYLES["standard"])
+
+        for i, key in enumerate(self.theme.keys()):
+            ttk.Label(self.top, text=key.capitalize()).grid(row=i, column=0, padx=5, pady=5)
+            ttk.Button(self.top, text=f"Choose {key} color", command=lambda k=key: self.choose_color(k)).grid(row=i, column=1, padx=5, pady=5)
+
+        ttk.Button(self.top, text="Save Theme", command=self.save_custom_theme).grid(row=i+1, column=0, columnspan=2, padx=5, pady=5)
+
+    def choose_color(self, key):
+        color = colorchooser.askcolor(title=f"Choose {key} color", initialcolor=self.theme[key])[1]
+        if color:
+            self.theme[key] = color
+
+    def save_custom_theme(self):
+        NORD_STYLES[self.theme_name] = self.theme
+        with open("customtheme.json", "w") as file:
+            json.dump(NORD_STYLES, file, indent=4)
+        messagebox.showinfo("Success", "Theme saved successfully!")
+        self.top.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
