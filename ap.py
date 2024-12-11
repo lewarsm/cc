@@ -38,6 +38,7 @@ import tkinter as tk
 from tkinter import ttk, colorchooser, filedialog, messagebox
 
 # Application-specific imports
+from getpfclient import PingFederateClientApp  # Import the PingFederateClientApp class
 
 
 # Configure logging
@@ -279,6 +280,11 @@ def open_custom_theme_window():
 def open_jwks_check_window(theme):
     jwks_check_window = CustomWindow("JWKS Check Tool", 1000, 600, theme)
     JWKSCheck(jwks_check_window.frame, theme)
+
+def open_pingfederate_client_app(theme):
+    new_window = tk.Toplevel(root)
+    new_window.title("PingFederate OAuth OIDC Client App")
+    PingFederateClientApp(new_window, theme)
 
 def open_hosts_file_window(theme):
     class CustomWindow(tk.Toplevel):

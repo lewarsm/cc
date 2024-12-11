@@ -1,71 +1,142 @@
+import json
+import os
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, colorchooser
 import requests
 from requests.auth import HTTPBasicAuth
-import json
+
+# Default themes
+NORD_STYLES = {
+    "standard": {
+        "background": "#304CB2",
+        "foreground": "#D8DEE9",
+        "highlight": "#88C0D0",
+        "error": "#BF616A",
+        "header": "#4C566A",
+        "row_odd": "#3B4252",
+        "row_even": "#434C5E",
+        "button": "#FFCA4F",
+        "invert_button": "#BF616A"
+    },
+    "frost": {
+        "background": "#8FBCBB",
+        "foreground": "#2E3440",
+        "highlight": "#88C0D0",
+        "error": "#BF616A",
+        "header": "#4C566A",
+        "row_odd": "#A3BE8C",
+        "row_even": "#EBCB8B",
+        "button": "#5E81AC",
+        "invert_button": "#D08770"
+    },
+    "aurora": {
+        "background": "#A3BE8C",
+        "foreground": "#2E3440",
+        "highlight": "#88C0D0",
+        "error": "#BF616A",
+        "header": "#4C566A",
+        "row_odd": "#B48EAD",
+        "row_even": "#D08770",
+        "button": "#5E81AC",
+        "invert_button": "#88C0D0"
+    }
+}
+
+# Load custom themes if customtheme.json exists
+if os.path.exists("customtheme.json"):
+    with open("customtheme.json", "r") as file:
+        custom_themes = json.load(file)
+        NORD_STYLES.update(custom_themes)
 
 class PingFederateClientApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("PingFederate Client App")
-        
-        self.base_urls = [
-            'https://localhost:9999',
-            'https://console.fed.prod.aws.swacorp.com',
-            'https://console.fed.qa.aws.swacorp.com',
-            'https://console.fed.dev.aws.swacorp.com'
-        ]
-        
-        self.setup_ui()
-        
-    def setup_ui(self):
-        tk.Label(self.root, text="User ID").grid(row=0, column=0)
-        self.user_id_entry = tk.Entry(self.root)
-        self.user_id_entry.grid(row=0, column=1)
-        
-        tk.Label(self.root, text="Password").grid(row=1, column=0)
-        self.password_entry = tk.Entry(self.root, show="*")
-        self.password_entry.grid(row=1, column=1)
-        
-        tk.Label(self.root, text="Console URL").grid(row=2, column=0)
-        self.url_var = tk.StringVar(self.root)
-        self.url_var.set(self.base_urls[0])
-        self.url_dropdown = ttk.Combobox(self.root, textvariable=self.url_var, values=self.base_urls, state="readonly")
-        self.url_dropdown.grid(row=2, column=1)
-        
-        tk.Label(self.root, text="Base URL").grid(row=3, column=0)
-        self.base_url_entry = tk.Entry(self.root)
-        self.base_url_entry.grid(row=3, column=1)
-        self.base_url_entry.insert(0, self.url_var.get().replace("/.well-known/openid-configuration", "").replace("9031", "9999"))
+    def __init__(self, master, theme=None):
+        self.master = master
+        self.theme = theme or "standard"
+        self.apply_theme(self.theme)
+        self.create_toolbar()
+        self.create_widgets()
+        self.master.grid_rowconfigure(6, weight=1)
+        self.master.grid_columnconfigure(1, weight=1)
 
-        self.ignore_cert_var = tk.BooleanVar()
-        self.ignore_cert_checkbutton = tk.Checkbutton(self.root, text="Ignore Self-Signed Certificates", variable=self.ignore_cert_var)
-        self.ignore_cert_checkbutton.grid(row=4, column=0, columnspan=2)
+    def apply_theme(self, theme_name):
+        theme = NORD_STYLES.get(theme_name, NORD_STYLES["standard"])
+        self.master.configure(bg=theme["background"])
+        # Apply other theme settings as needed
 
-        tk.Button(self.root, text="Fetch Clients", command=self.fetch_clients).grid(row=5, column=0, columnspan=2)
-        
-        self.client_listbox = tk.Listbox(self.root, selectmode=tk.SINGLE)
-        self.client_listbox.grid(row=6, column=0, columnspan=2, sticky="nsew")
-        
-        tk.Button(self.root, text="Get Client Info", command=self.get_client_info).grid(row=7, column=0, columnspan=2)
+    def create_toolbar(self):
+        toolbar = ttk.Frame(self.master)
+        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-        self.result_frame = tk.Frame(self.root)
-        self.result_frame.grid(row=8, column=0, columnspan=2, sticky="nsew")
+        theme_var = tk.StringVar(value=self.theme)
+        ttk.Label(toolbar, text="Choose Theme:").grid(row=0, column=0, padx=5, pady=5)
+        for i, theme_name in enumerate(NORD_STYLES.keys()):
+            ttk.Radiobutton(toolbar, text=theme_name.capitalize(), variable=theme_var, value=theme_name, command=lambda: self.apply_theme(theme_var.get())).grid(row=0, column=i+1, padx=5, pady=5)
+
+        ttk.Button(toolbar, text="Customize Theme", command=self.customize_theme).grid(row=0, column=i+2, padx=5, pady=5)
+
+    def create_widgets(self):
+        self.base_url_entry = tk.Entry(self.master)
+        self.base_url_entry.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        self.user_id_entry = tk.Entry(self.master)
+        self.user_id_entry.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        self.password_entry = tk.Entry(self.master, show="*")
+        self.password_entry.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        self.ignore_cert_var = tk.IntVar()
+        self.ignore_cert_check = tk.Checkbutton(self.master, text="Ignore SSL Cert", variable=self.ignore_cert_var)
+        self.ignore_cert_check.grid(row=4, column=0, columnspan=2, padx=5, pady=5)
+
+        tk.Button(self.master, text="Fetch Clients", command=self.fetch_clients).grid(row=5, column=0, columnspan=2, padx=5, pady=5)
+
+        self.client_listbox = tk.Listbox(self.master, selectmode=tk.SINGLE)
+        self.client_listbox.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+
+        tk.Button(self.master, text="Get Client Info", command=self.get_client_info).grid(row=7, column=0, columnspan=2, padx=5, pady=5)
+
+        self.result_frame = tk.Frame(self.master)
+        self.result_frame.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
         self.result_text = tk.Text(self.result_frame, wrap=tk.NONE)
-        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.result_text.grid(row=0, column=0, sticky="nsew")
 
         self.scroll_x = tk.Scrollbar(self.result_frame, orient=tk.HORIZONTAL, command=self.result_text.xview)
-        self.scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.scroll_x.grid(row=1, column=0, sticky="ew")
 
         self.scroll_y = tk.Scrollbar(self.result_frame, orient=tk.VERTICAL, command=self.result_text.yview)
-        self.scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scroll_y.grid(row=0, column=1, sticky="ns")
 
         self.result_text.configure(xscrollcommand=self.scroll_x.set, yscrollcommand=self.scroll_y.set)
 
-        self.root.grid_rowconfigure(6, weight=1)
-        self.root.grid_columnconfigure(1, weight=1)
-        
+        self.result_frame.grid_rowconfigure(0, weight=1)
+        self.result_frame.grid_columnconfigure(0, weight=1)
+
+    def customize_theme(self):
+        theme_name = self.theme
+        theme = NORD_STYLES.get(theme_name, NORD_STYLES["standard"])
+
+        def choose_color(key):
+            color = colorchooser.askcolor(title=f"Choose {key} color", initialcolor=theme[key])[1]
+            if color:
+                theme[key] = color
+                self.apply_theme(theme_name)
+
+        customizer = tk.Toplevel(self.master)
+        customizer.title("Customize Theme")
+
+        for i, key in enumerate(theme.keys()):
+            ttk.Label(customizer, text=key.capitalize()).grid(row=i, column=0, padx=5, pady=5)
+            ttk.Button(customizer, text=f"Choose {key} color", command=lambda k=key: choose_color(k)).grid(row=i, column=1, padx=5, pady=5)
+
+        ttk.Button(customizer, text="Save Theme", command=lambda: self.save_custom_theme(theme_name, theme)).grid(row=i+1, column=0, columnspan=2, padx=5, pady=5)
+
+    def save_custom_theme(self, theme_name, theme):
+        NORD_STYLES[theme_name] = theme
+        with open("customtheme.json", "w") as file:
+            json.dump(NORD_STYLES, file, indent=4)
+        messagebox.showinfo("Success", "Theme saved successfully!")
+
     def fetch_clients(self):
         base_url = self.base_url_entry.get()
         clients_url = f"{base_url}/pf-admin-api/v1/oauth/clients"
