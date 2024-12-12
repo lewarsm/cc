@@ -18,6 +18,7 @@ import warnings
 import dns.resolver
 import aiodns
 import asyncio
+import aiohttp
 import requests
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -1741,7 +1742,7 @@ class HTTPRequest:
         self.frame.grid(row=2, column=0, sticky="nsew")
 
         self.table_title_frame = ttk.Frame(self.frame)
-        self.table_title_frame.grid(row=0, column=0, columnspan=6, sticky="ew")
+        self.table_title_frame.grid(row=0, column=0, columnspan=7, sticky="ew")
         ttk.Label(self.table_title_frame, text="HTTPRequest").pack(side=tk.LEFT)
 
         self.collapse_btn = ttk.Button(self.table_title_frame, text="Collapse", command=self.toggle_collapse, style="Invert.TButton")
@@ -1767,18 +1768,22 @@ class HTTPRequest:
         self.ignore_ssl_btn = ttk.Button(self.frame, text="Ignore SSL Verification", command=self.toggle_ssl_verification)
         self.ignore_ssl_btn.grid(row=1, column=5, padx=5, pady=5)
 
+        ttk.Label(self.frame, text="Refresh Time (s):").grid(row=1, column=6, padx=5, pady=5, sticky="e")
+        self.refresh_time_entry = ttk.Entry(self.frame, width=10)
+        self.refresh_time_entry.grid(row=1, column=7, padx=5, pady=5)
+        self.refresh_time_entry.insert(0, "600")  # Default to 10 minutes
 
         self.table = ttk.Treeview(self.frame, columns=("URL", "Regex Pattern", "Status Code", "Status Text", "Timestamp"), show="headings")
         for col in ("URL", "Regex Pattern", "Status Code", "Status Text", "Timestamp"):
             self.table.heading(col, text=col)
             self.table.column(col, anchor=tk.W, width=150)
-        self.table.grid(row=2, column=0, columnspan=6, padx=5, pady=5, sticky="nsew")
+        self.table.grid(row=2, column=0, columnspan=8, padx=5, pady=5, sticky="nsew")
 
         self.scrollbar_y = ttk.Scrollbar(self.frame, orient=tk.VERTICAL, command=self.table.yview)
         self.scrollbar_x = ttk.Scrollbar(self.frame, orient=tk.HORIZONTAL, command=self.table.xview)
         self.table.configure(yscroll=self.scrollbar_y.set, xscroll=self.scrollbar_x.set)
-        self.scrollbar_y.grid(row=2, column=6, sticky="ns")
-        self.scrollbar_x.grid(row=3, column=0, columnspan=6, sticky="ew")
+        self.scrollbar_y.grid(row=2, column=8, sticky="ns")
+        self.scrollbar_x.grid(row=3, column=0, columnspan=8, sticky="ew")
 
         self.table.bind("<Double-1>", self.delete_row)
 
@@ -1794,6 +1799,7 @@ class HTTPRequest:
             self.refresh_btn.grid()
             self.reset_btn.grid()
             self.ignore_ssl_btn.grid()
+            self.refresh_time_entry.grid()
             self.collapse_btn.config(text="Collapse")
         else:
             self.table.grid_remove()
@@ -1803,6 +1809,7 @@ class HTTPRequest:
             self.refresh_btn.grid_remove()
             self.reset_btn.grid_remove()
             self.ignore_ssl_btn.grid_remove()
+            self.refresh_time_entry.grid_remove()
             self.collapse_btn.config(text="Expand")
         self.is_collapsed = not self.is_collapsed
 
@@ -1859,40 +1866,34 @@ class HTTPRequest:
         self.save_urls()
         self.update_http_table()
 
-    def update_http_table(self):
-        self.table.delete(*self.table.get_children())  # Clear the table
-        for index, item in enumerate(self.urls):
-            url = item.get("url")
-            regex = item.get("regex")
-            prunedurl = url.split("/", 1)[0]                   
-            print(prunedurl, "testing now...")
-
-            # Check if the URL resolves
+    async def fetch_url(self, url, regex):
+        async with aiohttp.ClientSession() as session:
             try:
-                socket.gethostbyname(prunedurl)
-            except socket.error as e:
-                error_message = f"Socket error for {prunedurl}: {e}"
-                logger.error(error_message)
-                self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))                
-            else:
-                try:
-                    response = requests.get(f'https://{url}', verify=not self.ignore_ssl_verification, timeout=10)
-                    status_text = response.text if len(response.text) > 0 else "No Response"
+                start_time = datetime.now()
+                async with session.get(url, ssl=not self.ignore_ssl_verification) as response:
+                    status_code = response.status
+                    status_text = await response.text()
                     if regex and not re.search(regex, status_text):
                         status_text = "Pattern Failed"
                     elif regex and re.search(regex, status_text):
                         status_text = "OK"
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    self.table.insert("", "end", values=(url, regex, response.status_code, status_text, timestamp))
-                except requests.exceptions.RequestException as e:
-                    error_message = f"HTTP request error for {url}: {e}"
-                    logger.error(error_message)
-                    self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                except Exception as e:
-                    error_message = f"Unexpected error for {url}: {e}"
-                    logger.error(error_message)
-                    self.table.insert("", "end", values=(url, regex, "Error", error_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        self.master.after(600000, self.update_http_table)  # Auto-refresh every 10 minutes
+                    response_time = (datetime.now() - start_time).total_seconds()
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    return (url, regex, status_code, status_text, timestamp)
+            except Exception as e:
+                return (url, regex, "Error", str(e), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    async def update_http_table_async(self):
+        self.table.delete(*self.table.get_children())  # Clear the table
+        tasks = [self.fetch_url(entry["url"], entry["regex"]) for entry in self.urls]
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            self.table.insert("", "end", values=result)
+        refresh_time = int(self.refresh_time_entry.get()) * 1000  # Convert seconds to milliseconds
+        self.master.after(refresh_time, lambda: asyncio.run(self.update_http_table_async()))  # Auto-refresh based on user input
+
+    def update_http_table(self):
+        asyncio.run(self.update_http_table_async())
 
 class JWKSCheck:
     def __init__(self, master, style):
