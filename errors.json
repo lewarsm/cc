@@ -50,3 +50,8 @@ Domain does not exist: server1
 Domain does not exist: server1
 Domain does not exist: server1
 Domain does not exist: server1
+Domain does not exist: server1
+Socket error for server1: [Errno 8] nodename nor servname provided, or not known
+Socket error for server2: [Errno 8] nodename nor servname provided, or not known
+Socket error for server1: [Errno 8] nodename nor servname provided, or not known
+Socket error for server2: [Errno 8] nodename nor servname provided, or not known

@@ -1,1 +1,1 @@
-[{"url": "www.google.com", "regex": "OK"}, {"url": "www.mail.com", "regex": "OK"}]
+[{"url": "server1", "regex": "OK"}, {"url": "server2", "regex": "OK"}]

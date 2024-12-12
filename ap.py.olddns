@@ -15,9 +15,8 @@ import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
+
 import dns.resolver
-import aiodns
-import asyncio
 import requests
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -184,20 +183,6 @@ def dump_all_variables():
         global_vars = globals()
         json.dump(global_vars, sys.stdout, indent=1)
         print()
-
-async def resolve_dns(domain):
-    resolver = aiodns.DNSResolver()
-    try:
-        result = await resolver.query(domain, 'A')
-        return result
-    except Exception as e:
-        logging.error(f"Error resolving DNS for {domain}: {e}")
-        return None
-
-async def fetch_dns_info(domains):
-    tasks = [resolve_dns(domain) for domain in domains]
-    results = await asyncio.gather(*tasks)
-    return results
 
 # Apply theme
 def apply_theme(theme):
@@ -1595,7 +1580,7 @@ class NSLookup:
         self.frame.grid(row=1, column=0, sticky="nsew")
 
         self.table_title_frame = ttk.Frame(self.frame)
-        self.table_title_frame.grid(row=0, column=0, columnspan=5, sticky="ew")
+        self.table_title_frame.grid(row=0, column=0, columnspan=4, sticky="ew")
         ttk.Label(self.table_title_frame, text="NSLookup").pack(side=tk.LEFT)
 
         self.collapse_btn = ttk.Button(self.table_title_frame, text="Collapse", command=self.toggle_collapse, style="Invert.TButton")
@@ -1613,22 +1598,17 @@ class NSLookup:
         self.reset_btn = ttk.Button(self.frame, text="Reset Domains", command=self.reset_domains)
         self.reset_btn.grid(row=1, column=3, padx=5, pady=5)
 
-        ttk.Label(self.frame, text="Refresh Time (s):").grid(row=1, column=4, padx=5, pady=5, sticky="e")
-        self.refresh_time_entry = ttk.Entry(self.frame, width=10)
-        self.refresh_time_entry.grid(row=1, column=5, padx=5, pady=5)
-        self.refresh_time_entry.insert(0, "600")  # Default to 10 minutes
-
         self.table = ttk.Treeview(self.frame, columns=("Domain", "Name", "IP Address", "Hanger", "Timestamp"), show="headings")
         for col in ("Domain", "Name", "IP Address", "Hanger", "Timestamp"):
             self.table.heading(col, text=col)
             self.table.column(col, anchor=tk.W, width=150)
-        self.table.grid(row=2, column=0, columnspan=6, padx=5, pady=5, sticky="nsew")
+        self.table.grid(row=2, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
 
         self.scrollbar_y = ttk.Scrollbar(self.frame, orient=tk.VERTICAL, command=self.table.yview)
         self.scrollbar_x = ttk.Scrollbar(self.frame, orient=tk.HORIZONTAL, command=self.table.xview)
         self.table.configure(yscroll=self.scrollbar_y.set, xscroll=self.scrollbar_x.set)
-        self.scrollbar_y.grid(row=2, column=6, sticky="ns")
-        self.scrollbar_x.grid(row=3, column=0, columnspan=6, sticky="ew")
+        self.scrollbar_y.grid(row=2, column=4, sticky="ns")
+        self.scrollbar_x.grid(row=3, column=0, columnspan=4, sticky="ew")
 
         self.table.bind("<Double-1>", self.delete_row)
 
@@ -1642,7 +1622,6 @@ class NSLookup:
             self.add_domain_btn.grid()
             self.refresh_btn.grid()
             self.reset_btn.grid()
-            self.refresh_time_entry.grid()
             self.collapse_btn.config(text="Collapse")
         else:
             self.table.grid_remove()
@@ -1650,7 +1629,6 @@ class NSLookup:
             self.add_domain_btn.grid_remove()
             self.refresh_btn.grid_remove()
             self.reset_btn.grid_remove()
-            self.refresh_time_entry.grid_remove()
             self.collapse_btn.config(text="Expand")
         self.is_collapsed = not self.is_collapsed
 
@@ -1694,30 +1672,34 @@ class NSLookup:
         self.save_domains()
         self.update_nslookup_table()
 
-    async def resolve_domain(self, domain):
-        resolver = aiodns.DNSResolver()
-        try:
-            answers = await resolver.query(domain, 'A')
-            cname = await resolver.query(domain, 'CNAME')
-            name = cname.cname if cname else "No CNAME"
-            ip_address = answers[0].host if answers else "No A record"
-            hanger = self.get_hanger(name)
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            return (domain, name, ip_address, hanger, timestamp)
-        except aiodns.error.DNSError as e:
-            return (domain, "Error", str(e), "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-    async def update_nslookup_table_async(self):
-        self.table.delete(*self.table.get_children())  # Clear the table
-        tasks = [self.resolve_domain(domain) for domain in self.domains]
-        results = await asyncio.gather(*tasks)
-        for result in results:
-            self.table.insert("", "end", values=result)
-        refresh_time = int(self.refresh_time_entry.get()) * 1000  # Convert seconds to milliseconds
-        self.master.after(refresh_time, lambda: asyncio.run(self.update_nslookup_table_async()))  # Auto-refresh based on user input
-
     def update_nslookup_table(self):
-        asyncio.run(self.update_nslookup_table_async())
+        self.table.delete(*self.table.get_children())  # Clear the table
+        resolver = dns.resolver.Resolver()
+        for domain in self.domains:
+            try:
+                answers = dns.resolver.resolve(domain, 'A')
+                names = dns.resolver.resolve(domain, 'CNAME')
+                if answers and names:
+                    name = names[0].to_text() if len(names) > 0 else "No CNAME"
+                    ip_address = answers[0].to_text() if len(answers) > 0 else "No A record"
+                    hanger = self.get_hanger(name)
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    self.table.insert("", "end", values=(domain, name, ip_address, hanger, timestamp))
+                else:
+                    raise Exception("No valid DNS records found")
+            except dns.resolver.NoAnswer:
+                logger.error(f"No answer for domain: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "No answer", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            except dns.resolver.NXDOMAIN:
+                logger.error(f"Domain does not exist: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "Domain does not exist", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            except dns.exception.Timeout:
+                logger.error(f"Timeout while resolving domain: {domain}")
+                self.table.insert("", "end", values=(domain, "Error", "Timeout", "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            except Exception as e:
+                logger.error(f"Error resolving domain {domain}: {e}")
+                self.table.insert("", "end", values=(domain, "Error", str(e), "", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        self.master.after(600000, self.update_nslookup_table)  # Auto-refresh every 10 minutes
 
     def get_hanger(self, name):
         for key, value in hanger_mappings.items():
@@ -1766,6 +1748,9 @@ class HTTPRequest:
 
         self.ignore_ssl_btn = ttk.Button(self.frame, text="Ignore SSL Verification", command=self.toggle_ssl_verification)
         self.ignore_ssl_btn.grid(row=1, column=5, padx=5, pady=5)
+
+        self.use_custom_hosts_button = ttk.Button(self.frame, text="Use Custom Hosts File", command=self.use_custom_hosts)
+        self.use_custom_hosts_button.grid(row=1, column=6, padx=5, pady=5)  # Adjust row=XX as needed
 
 
         self.table = ttk.Treeview(self.frame, columns=("URL", "Regex Pattern", "Status Code", "Status Text", "Timestamp"), show="headings")
@@ -1825,6 +1810,15 @@ class HTTPRequest:
                 json.dump(initial_data, file)
         with open("urls.json", "r") as file:
             return json.load(file)
+
+    def use_custom_hosts(self):
+        try:
+            with open('hosts.json', 'r') as file:
+                hosts_content = json.load(file)
+            # Logic to use hosts_content for DNS override
+            tk.messagebox.showinfo("Info", "Using custom hosts file for DNS.")
+        except FileNotFoundError:
+            tk.messagebox.showerror("Error", "Hosts file not found.")
 
     def save_urls(self):
         with open("urls.json", "w") as file:
