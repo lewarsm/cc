@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser
 import requests
@@ -65,7 +66,7 @@ class PingFederateClientApp:
 
     def create_toolbar(self):
         toolbar = ttk.Frame(self.master)
-        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        toolbar.grid(row=0, column=0, columnspan=3, sticky="ew")
 
         theme_var = tk.StringVar(value=self.theme)
         ttk.Label(toolbar, text="Choose Theme:").grid(row=0, column=0, padx=5, pady=5)
@@ -83,29 +84,40 @@ class PingFederateClientApp:
         self.base_url_combobox.bind("<<ComboboxSelected>>", self.update_base_url_entry)
         
         self.base_url_entry = tk.Entry(self.master)
-        self.base_url_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.base_url_entry.grid(row=1, column=2, padx=5, pady=5, sticky="ew")
+        self.base_url_entry.insert(0, "type console url here")
 
-        ttk.Label(self.master, text="User ID:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(self.master, text="User ID:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
         self.user_id_entry = tk.Entry(self.master)
-        self.user_id_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+        self.user_id_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.user_id_entry.insert(0, "UserID Here")
 
-        ttk.Label(self.master, text="Password:").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(self.master, text="Password:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
         self.password_entry = tk.Entry(self.master, show="*")
-        self.password_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        self.password_entry.grid(row=3, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.password_entry.insert(0, "Password Here")
 
         self.ignore_cert_var = tk.IntVar()
         self.ignore_cert_check = tk.Checkbutton(self.master, text="Ignore SSL Cert", variable=self.ignore_cert_var)
-        self.ignore_cert_check.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
+        self.ignore_cert_check.grid(row=4, column=0, columnspan=3, padx=5, pady=5)
 
-        tk.Button(self.master, text="Fetch Clients", command=self.fetch_clients).grid(row=6, column=0, columnspan=2, padx=5, pady=5)
+        ttk.Label(self.master, text="Search Client:").grid(row=5, column=0, padx=5, pady=5, sticky="e")
+        self.search_entry = tk.Entry(self.master)
+        self.search_entry.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
+
+        tk.Button(self.master, text="Fetch Clients", command=self.fetch_clients).grid(row=5, column=2, padx=5, pady=5)
 
         self.client_listbox = tk.Listbox(self.master, selectmode=tk.SINGLE)
-        self.client_listbox.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        self.client_listbox.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
-        tk.Button(self.master, text="Get Client Info", command=self.get_client_info).grid(row=8, column=0, columnspan=2, padx=5, pady=5)
+        self.scroll_y_client = tk.Scrollbar(self.master, orient=tk.VERTICAL, command=self.client_listbox.yview)
+        self.scroll_y_client.grid(row=6, column=2, sticky="ns")
+        self.client_listbox.configure(yscrollcommand=self.scroll_y_client.set)
+
+        tk.Button(self.master, text="Get Client Info", command=self.get_client_info).grid(row=6, column=3, padx=5, pady=5)
 
         self.result_frame = tk.Frame(self.master)
-        self.result_frame.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        self.result_frame.grid(row=7, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
 
         self.result_text = tk.Text(self.result_frame, wrap=tk.NONE)
         self.result_text.grid(row=0, column=0, sticky="nsew")
@@ -137,13 +149,15 @@ class PingFederateClientApp:
         user_id = self.user_id_entry.get()
         password = self.password_entry.get()
         verify_ssl = not self.ignore_cert_var.get()
+        search_pattern = self.search_entry.get()
 
         response = requests.get(clients_url, auth=HTTPBasicAuth(user_id, password), headers={"accept": "application/json", "X-XSRF-Header": "PingFederate"}, verify=verify_ssl)
         if response.status_code == 200:
             clients = response.json().get("items", [])
             self.client_listbox.delete(0, tk.END)
             for client in clients:
-                self.client_listbox.insert(tk.END, client["clientId"])
+                if re.search(search_pattern, client["clientId"]):
+                    self.client_listbox.insert(tk.END, client["clientId"])
         else:
             messagebox.showerror("Error", f"Failed to fetch clients: {response.status_code}")
 
@@ -228,16 +242,21 @@ class CustomizeThemeWindow:
         self.theme_name = theme_name
         self.theme = NORD_STYLES.get(theme_name, NORD_STYLES["standard"])
 
+        self.color_labels = {}
+
         for i, key in enumerate(self.theme.keys()):
             ttk.Label(self.top, text=key.capitalize()).grid(row=i, column=0, padx=5, pady=5)
             ttk.Button(self.top, text=f"Choose {key} color", command=lambda k=key: self.choose_color(k)).grid(row=i, column=1, padx=5, pady=5)
+            self.color_labels[key] = ttk.Label(self.top, text=self.theme[key])
+            self.color_labels[key].grid(row=i, column=2, padx=5, pady=5)
 
-        ttk.Button(self.top, text="Save Theme", command=self.save_custom_theme).grid(row=i+1, column=0, columnspan=2, padx=5, pady=5)
+        ttk.Button(self.top, text="Save Theme", command=self.save_custom_theme).grid(row=i+1, column=0, columnspan=3, padx=5, pady=5)
 
     def choose_color(self, key):
         color = colorchooser.askcolor(title=f"Choose {key} color", initialcolor=self.theme[key])[1]
         if color:
             self.theme[key] = color
+            self.color_labels[key].config(text=color)
 
     def save_custom_theme(self):
         NORD_STYLES[self.theme_name] = self.theme
