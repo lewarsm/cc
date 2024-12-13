@@ -8,6 +8,8 @@ import hmac
 import base64
 from datetime import datetime, timedelta
 import time
+import io
+import contextlib
 import subprocess
 import ssl
 import threading
@@ -15,7 +17,7 @@ import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
-import dns.resolver
+#import dns.resolver
 import aiodns
 import asyncio
 import aiohttp
@@ -35,6 +37,7 @@ from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
 from urllib.parse import urlencode, urlparse, parse_qs
 from OpenSSL import crypto
+from ping3 import ping , verbose_ping #PingError
 
 import tkinter as tk
 from tkinter import ttk, colorchooser, filedialog, messagebox
@@ -418,13 +421,46 @@ def open_tcp_tools_window(theme):
     host_entry = ttk.Entry(frame, width=50)
     host_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    #tool_selection = ttk.Combobox(frame, values=["Ping", "Nslookup", "Traceroute"], state="readonly")
     tool_selection = ttk.Combobox(frame, values=["Ping", "Nslookup"], state="readonly")
-
     tool_selection.grid(row=1, column=0, padx=5, pady=5)
     tool_selection.set("Ping")
 
     result_text = create_scrollable_text(frame, 20, 60, theme, 3, 0, 2)
+
+    async def run_nslookup(host):
+        resolver = aiodns.DNSResolver()
+        try:
+            result_text.delete(1.0, tk.END)
+            record_types = ['A', 'AAAA', 'CNAME', 'MX', 'TXT']
+            for record_type in record_types:
+                result_text.insert(tk.END, f"\n{record_type} Records:\n")
+                try:
+                    if record_type == 'CNAME':
+                        response = await resolver.query(host, record_type)
+                        result_text.insert(tk.END, f"{response.cname}\n")
+                    else:
+                        response = await resolver.query(host, record_type)
+                        for answer in response:
+                            if record_type == 'A' or record_type == 'AAAA':
+                                result_text.insert(tk.END, f"{answer.host}\n")
+                            elif record_type == 'MX':
+                                result_text.insert(tk.END, f"{answer.exchange} (Priority: {answer.priority})\n")
+                            elif record_type == 'TXT':
+                                result_text.insert(tk.END, f"{' '.join(answer.text)}\n")
+                except aiodns.error.DNSError as e:
+                    result_text.insert(tk.END, f"Error fetching {record_type} records: {e}\n")
+        except Exception as e:
+            result_text.insert(tk.END, f"Error running Nslookup: {e}")
+
+    def run_ping(host):
+        try:
+            result_text.delete(1.0, tk.END)
+            with io.StringIO() as buf, contextlib.redirect_stdout(buf):
+                verbose_ping(host, count=4)
+                output = buf.getvalue()
+            result_text.insert(tk.END, output)
+        except Exception as e:
+            result_text.insert(tk.END, f"Error running Ping: {e}")
 
     def run_tool():
         host = host_entry.get().strip()
@@ -433,15 +469,11 @@ def open_tcp_tools_window(theme):
             try:
                 result_text.delete(1.0, tk.END)
                 if tool == "Ping":
-                    response = subprocess.run(["ping", "-c", "4", host], capture_output=True, text=True)
+                    run_ping(host)
                 elif tool == "Nslookup":
-                    response = subprocess.run(["nslookup", host], capture_output=True, text=True)
-                #elif tool == "Traceroute":
-                #    response = subprocess.run(["traceroute", host], capture_output=True, text=True)
+                    asyncio.run(run_nslookup(host))
                 else:
                     result_text.insert(tk.END, "Unknown tool selected.")
-                    return
-                result_text.insert(tk.END, response.stdout)
             except Exception as e:
                 result_text.insert(tk.END, f"Error running {tool}: {e}")
 
@@ -513,11 +545,10 @@ def open_jwt_window(theme):
 
     def decode_jwt():
         token = jwt_entry.get().strip()
-        if not token:
+        if not token or token == "Type JWT Here":
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, "Please enter a JWT.")
             return
-
         try:
             # Split the JWT into its parts
             header_b64, payload_b64, signature_b64 = token.split('.')
@@ -525,6 +556,11 @@ def open_jwt_window(theme):
             # Decode the JWT parts
             header = json.loads(base64.urlsafe_b64decode(header_b64 + '=='))
             payload = json.loads(base64.urlsafe_b64decode(payload_b64 + '=='))
+            
+            # Convert Unix timestamps to UTC time
+            for time_field in ['iat', 'exp', 'nbf']:
+                if time_field in payload:
+                    payload[time_field] = f"{payload[time_field]} ({datetime.utcfromtimestamp(payload[time_field]).strftime('%Y-%m-%d %H:%M:%S UTC')})"
             
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Header:\n{json.dumps(header, indent=4)}\n\n")
@@ -714,16 +750,24 @@ def open_oauth_window(theme):
             header, payload, signature = token.split('.')
             header_decoded = base64.urlsafe_b64decode(header + '==').decode('utf-8')
             payload_decoded = base64.urlsafe_b64decode(payload + '==').decode('utf-8')
+            
+            header_json = json.loads(header_decoded)
+            payload_json = json.loads(payload_decoded)
+            
+            # Convert Unix timestamps to UTC time
+            for time_field in ['iat', 'exp', 'nbf']:
+                if time_field in payload_json:
+                    payload_json[time_field] = f"{payload_json[time_field]} ({datetime.utcfromtimestamp(payload_json[time_field]).strftime('%Y-%m-%d %H:%M:%S UTC')})"
+            
             decoded = {
-                "header": json.loads(header_decoded),
-                "payload": json.loads(payload_decoded),
+                "header": header_json,
+                "payload": payload_json,
                 "signature": signature
             }
             return json.dumps(decoded, indent=4)
         except Exception as e:
-            log_error("Error decoding JWT",e)
+            log_error("Error decoding JWT", e)
             return f"Error decoding JWT: {e}"
-
 
     def get_oauth_tokens():
         token_endpoint = token_endpoint_entry.get().strip()
