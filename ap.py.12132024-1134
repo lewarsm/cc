@@ -65,16 +65,15 @@ warnings.filterwarnings("ignore")
 # Styling configurations
 NORD_STYLES = {
     "standard": {
-    "background": "#1E4BC3",  #// Deep blue provides a strong, rich base.
-    "foreground": "#E2E2E2",  #// Light gray for high contrast text on the blue background.
-    "highlight": "#F9B612",   #// Warm golden yellow for emphasis and highlights.
-    "error": "#FF0000",       #// Bright red is universally recognized for errors.
-    "header": "#F9B612",      #// Consistent with highlight, draws attention to headers.
-    "row_odd": "#304CB2",     #// Slightly darker blue for alternating rows.
-    "row_even": "#1E4BC3",    #// Base blue for alternating rows.
-    "button": "#F9B612",      #// Golden yellow for actionable elements like buttons.
-    "invert_button": "#FF0000" #// Bright red for destructive or cancel actions.
-
+        "background": "#304CB2",
+        "foreground": "#D8DEE9",
+        "highlight": "#88C0D0",
+        "error": "#BF616A",
+        "header": "#4C566A",
+        "row_odd": "#3B4252",
+        "row_even": "#434C5E",
+        "button": "#FFCA4F",
+        "invert_button": "#BF616A"
     },
     "frost": {
         "background": "#8FBCBB",
@@ -205,23 +204,9 @@ async def fetch_dns_info(domains):
     return results
 
 # Apply theme
-
 def apply_theme(theme):
     style = ttk.Style()
     colors = NORD_STYLES[theme]
-
-    colors = {
-        "background": "#1E4BC3",  # Deep blue
-        "foreground": "#E2E2E2",  # Light gray
-        "highlight": "#F9B612",   # Golden yellow
-        "error": "#FF0000",       # Bright red
-        "header": "#F9B612",      # Golden yellow
-        "row_odd": "#304CB2",     # Slightly darker blue
-        "row_even": "#1E4BC3",    # Base blue
-        "button": "#F9B612",      # Golden yellow
-        "invert_button": "#FF0000" # Bright red
-    }
-
     style.configure("TFrame", background=colors["background"])
     style.configure("TLabelFrame", background=colors["background"], foreground=colors["foreground"])
     style.configure("Treeview", background=colors["background"], foreground=colors["foreground"], fieldbackground=colors["background"])
@@ -232,7 +217,6 @@ def apply_theme(theme):
     style.configure("TText", background=colors["background"], foreground=colors["foreground"])
     style.configure("Invert.TButton", background=colors["invert_button"], foreground=colors["foreground"])
     style.map("Invert.TButton", background=[("active", colors["highlight"])])
-
 
 # Custom theme window
 def open_custom_theme_window():
@@ -724,6 +708,7 @@ def fetch_well_known(endpoint, result_text):
 def open_oauth_window(theme):
     oauth_window = CustomWindow("OAuth Debugger", 1200, 600, theme)
     frame = oauth_window.frame
+
     well_known_entry = create_labeled_entry(frame, "OAuth Well-Known Endpoint:", 1, 0)
     token_endpoint_entry = create_labeled_entry(frame, "Token Endpoint:", 3, 0)
     client_id_entry = create_labeled_entry(frame, "Client ID:", 5, 0)
@@ -736,20 +721,6 @@ def open_oauth_window(theme):
     well_known_table_frame.grid(row=0, column=3, rowspan=12, padx=10, pady=10, sticky="nsew")
 
     well_known_table = CustomTable(well_known_table_frame, ("Key", "Value"), 0, 0)
-
-    well_known_urls = [
-        'https://server/.well-known/openid-configuration',
-        'https://server1/.well-known/openid-configuration'
-    ]
-
-    def on_well_known_select(event):
-        selected_url = well_known_combobox.get()
-        well_known_entry.delete(0, tk.END)
-        well_known_entry.insert(0, selected_url)
-
-    well_known_combobox = ttk.Combobox(frame, values=well_known_urls, state="readonly")
-    well_known_combobox.grid(row=1, column=1, padx=5, pady=5)
-    well_known_combobox.bind("<<ComboboxSelected>>", on_well_known_select)
 
     def fetch_well_known_oauth():
         well_known_url = well_known_entry.get().strip()
@@ -840,8 +811,6 @@ def open_oauth_window(theme):
     ttk.Button(frame, text="Get Tokens", command=get_oauth_tokens).grid(row=10, column=1, padx=5, pady=5)
     ttk.Button(frame, text="Show Certificate Details", command=show_cert_details).grid(row=0, column=0, padx=5, pady=5, sticky="e")
     ttk.Button(frame, text="Close", command=oauth_window.window.destroy).grid(row=12, column=1, padx=5, pady=5, sticky="e")
-
-
 
 def show_certificate_details():
     cert_data = load_certificates()
@@ -1000,26 +969,13 @@ class OIDCDebugger:
    #     self.start_https_server()
 
     def open_oidc_log_window(self):
-        oidc_log_window = tk.Toplevel(self.window)
-        oidc_log_window.title("OIDC Log")
-        oidc_log_window.geometry("800x600")
+        if self.oidc_log_window is None or not self.oidc_log_window.winfo_exists():
+            self.oidc_log_window = tk.Toplevel(self.window)
+            self.oidc_log_window.title("OIDC Process Log")
+            self.oidc_log_window.geometry("600x400")
+            self.oidc_log_text = tk.Text(self.oidc_log_window)
+            self.oidc_log_text.pack(fill=tk.BOTH, expand=True)
 
-        frame = ttk.Frame(oidc_log_window)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        # Create a Text widget with scrollbars
-        self.oidc_log_text = tk.Text(frame, wrap=tk.NONE)
-        self.oidc_log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        scrollbar_y = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.oidc_log_text.yview)
-        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.oidc_log_text.configure(yscrollcommand=scrollbar_y.set)
-
-        scrollbar_x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.oidc_log_text.xview)
-        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-        self.oidc_log_text.configure(xscrollcommand=scrollbar_x.set)
-
-        ttk.Button(frame, text="Close", command=oidc_log_window.destroy).pack(pady=5)
 
     def update_endpoint_entry(self, event):
         selected_value = self.well_known_var.get()
@@ -1046,8 +1002,9 @@ class OIDCDebugger:
         if self.log_oidc_process.get():
             self.open_oidc_log_window()
 
-        well_known_url = self.endpoint_entry.get().strip()
-
+        well_known_url = self.well_known_var.get()
+        if not well_known_url:
+            well_known_url = self.endpoint_entry.get().strip()
 
         client_id = self.client_id_entry.get().strip()
         client_secret = self.client_secret_entry.get().strip()
@@ -1551,6 +1508,7 @@ class OIDCDebugger:
         self.master.clipboard_append(value)
         self.master.update()  # Keep the clipboard updated
         tk.messagebox.showinfo("Copied", f"Copied to clipboard:\n{value}")
+
 
 class CustomWindow:
     def __init__(self, title, width, height, theme):

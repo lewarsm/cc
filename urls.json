@@ -1,1 +1,1 @@
-[{"url": "server1", "regex": "OK"}, {"url": "server2", "regex": "OK"}]
+[{"url": "server1", "regex": "OK"}, {"url": "server2", "regex": "OK"}, {"url": "Enter URL", "regex": "Enter regex"}]
