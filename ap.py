@@ -44,7 +44,8 @@ from tkinter import ttk, colorchooser, filedialog, messagebox
 
 # Application-specific imports
 from getpfclient import PingFederateClientApp  # Import the PingFederateClientApp class
-
+from oidc_debugger import OIDCDebugger
+from oauth_debugger import OAuthDebugger
 
 # Configure logging
 logger = logging.getLogger("ErrorLogger")
@@ -119,6 +120,12 @@ current_path = os.getcwd()
 https_server = None
 https_server_thread = None  # Add a reference to the thread
 first_run = True
+
+def open_oidc_debugger():
+    OIDCDebugger(root, theme="default")
+
+def open_oauth_debugger():
+    OAuthDebugger(root, theme="default")
 
 def shutdown_https_server():
     global https_server, https_server_thread
@@ -2235,8 +2242,11 @@ def main():
     ttk.Button(sidebar, text="TCP Tools", command=lambda: open_tcp_tools_window(theme_var.get())).grid(row=6, column=0, padx=5, pady=5)
     ttk.Button(sidebar, text="JWT Decoder", command=lambda: open_jwt_window(theme_var.get())).grid(row=7, column=0, padx=5, pady=5)
     ttk.Button(sidebar, text="SAML Decoder", command=lambda: open_saml_window(theme_var.get())).grid(row=8, column=0, padx=5, pady=5)
-    ttk.Button(sidebar, text="OIDC Debugger", command=lambda: OIDCDebugger(scrollable_frame, theme_var.get())).grid(row=9, column=0, padx=5, pady=5)
-    ttk.Button(sidebar, text="OAuth Debugger", command=lambda: open_oauth_window(theme_var.get())).grid(row=10, column=0, padx=5, pady=5)
+    ttk.Button(sidebar, text="OIDC Debugger", command=open_oidc_debugger(theme_var.get())).grid(row=9, column=0, padx=5, pady=5)
+    ttk.Button(sidebar, text="OAuth Debugger", command=open_oauth_debugger(theme_var.get())).grid(row=10, column=0, padx=5, pady=5)
+#    ttk.Button(sidebar, text="OIDC Debugger", command=lambda: OIDCDebugger(scrollable_frame, theme_var.get())).grid(row=9, column=0, padx=5, pady=5)
+ #   ttk.Button(sidebar, text="OAuth Debugger", command=lambda: open_oauth_window(theme_var.get())).grid(row=10, column=0, padx=5, pady=5)
+
     ttk.Button(sidebar, text="SSL Certificate Reader", command=lambda: open_ssl_cert_reader(theme_var.get())).grid(row=11, column=0, padx=5, pady=5)
     ttk.Button(sidebar, text="JWKS Check", command=lambda: open_jwks_check_window(theme_var.get())).grid(row=12, column=0, padx=5, pady=5)
     ttk.Button(sidebar, text="Create Custom Hosts File", command=lambda: open_hosts_file_window(theme_var.get())).grid(row=13, column=0, padx=5, pady=5)

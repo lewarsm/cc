@@ -9,7 +9,7 @@ colors = {
     "header": "#F9B612",      # Same as highlight
     "button": "#F9B612",      # Golden yellow
     "invert_button": "#FF0000",  # Bright red for inverse actions
-    "table_odd": "#304CB2",   # Slightly darker blue for table rows
+    "table_odd": "#1EBBC3",   # Slightly darker blue for table rows
     "table_even": "#1E4BC3"   # Base blue for table rows
 }
 
@@ -55,7 +55,7 @@ btn2.pack(side=tk.LEFT, padx=5)
 frame_labels = ttk.Frame(root, style="TFrame", padding=10)
 frame_labels.pack(fill=tk.X, padx=10, pady=5)
 label1 = ttk.Label(frame_labels, text="Foreground Text Example", style="TLabel")
-label1.pack(side=tk.LEFT, padx=10)
+label1.pack(side=tk.LEFT, padx=10)  # Add padding to the left
 
 highlight_label = tk.Label(frame_labels, text="Highlight Color Example", bg=colors["highlight"], fg=colors["background"])
 highlight_label.pack(side=tk.LEFT, padx=10)

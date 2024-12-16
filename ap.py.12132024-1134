@@ -65,15 +65,15 @@ warnings.filterwarnings("ignore")
 # Styling configurations
 NORD_STYLES = {
     "standard": {
-        "background": "#304CB2",
-        "foreground": "#D8DEE9",
-        "highlight": "#88C0D0",
-        "error": "#BF616A",
-        "header": "#4C566A",
-        "row_odd": "#3B4252",
-        "row_even": "#434C5E",
-        "button": "#FFCA4F",
-        "invert_button": "#BF616A"
+        "background": "#1E4BC3",  # Base color (Deep blue)
+        "foreground": "#FFFFFF",  # White for good contrast
+        "highlight": "#F9B612",   # Golden yellow for highlights
+        "error": "#FF4C4C",       # Bright red for errors
+        "header": "#1E4BC3",      # Same as background for consistency
+        "row_odd": "#3A6EA5",     # Slightly lighter blue for odd rows
+        "row_even": "#1E4BC3",    # Base blue for even rows
+        "button": "#F9B612",      # Golden yellow for buttons
+        "invert_button": "#FF4C4C" # Bright red for inverse actions
     },
     "frost": {
         "background": "#8FBCBB",
