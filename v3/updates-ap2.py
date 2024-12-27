@@ -16,6 +16,7 @@ import subprocess
 import ssl
 import threading
 import queue
+from queue import Queue
 import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -173,6 +174,7 @@ if not os.path.exists("errors.json"):
         json.dump([], file)
 
 def log_error(subject, error):
+    # Prepare the error entry
     error_entry = {
         "subject": subject,
         "error": str(error),
@@ -182,14 +184,18 @@ def log_error(subject, error):
     # Log the error using the logger
     logger.error(json.dumps(error_entry))
     
-    # Also write the error to errors.json
+    # Read the existing errors from the file
     try:
         with open("errors.json", "r") as file:
-            errors = json.load(file)
+            # Load the existing errors, or initialize to an empty list if the file is empty or invalid
+            errors = json.load(file) if file.read().strip() else []
     except (FileNotFoundError, json.JSONDecodeError):
         errors = []
-    
+
+    # Append the new error entry
     errors.append(error_entry)
+    
+    # Write the updated errors back to the file
     with open("errors.json", "w") as file:
         json.dump(errors, file, indent=4)
 
