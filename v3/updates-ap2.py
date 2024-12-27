@@ -1,6 +1,6 @@
+# Standard library imports
 import os
 import io
-from io import BytesIO
 import sys
 import json
 import shlex
@@ -15,42 +15,40 @@ import time
 import subprocess
 import ssl
 import threading
-import queue 
-from  queue import Queue
+import queue
 import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
+import contextlib
+import socketserver
+import http.server
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlencode, urlparse, parse_qs
+
+# Third-party imports
 import aiodns
 import asyncio
 import aiohttp
 from aiohttp import ClientConnectorCertificateError
-#import dns.resolver
 import requests
-import contextlib
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend 
-from cryptography.x509.oid import NameOID, ExtensionOID
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
+from cryptography.x509.oid import NameOID, ExtensionOID
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
 from PIL import Image, ImageTk
-import socketserver
-import http.server
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import pygame
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
-from urllib.parse import urlencode, urlparse, parse_qs
 from OpenSSL import crypto
-from ping3 import ping , verbose_ping #PingError
+from ping3 import ping, verbose_ping
 import certifi
 
+# Tkinter imports
 import tkinter as tk
 from tkinter import ttk, colorchooser, filedialog, messagebox, Toplevel, Label
-
 
 # Application-specific imports
 from getpfclient import PingFederateClientApp  # Import the PingFederateClientApp class
