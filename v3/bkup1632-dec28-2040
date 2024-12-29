@@ -1,6 +1,6 @@
-# Standard library imports
 import os
 import io
+from io import BytesIO
 import sys
 import json
 import shlex
@@ -14,42 +14,43 @@ from datetime import datetime, timedelta
 import time
 import subprocess
 import ssl
-import threading
+import concurrent.futures
 import queue
-from queue import Queue
+import threading
 import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
-import contextlib
-import socketserver
-import http.server
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlencode, urlparse, parse_qs
-
-# Third-party imports
 import aiodns
 import asyncio
 import aiohttp
 from aiohttp import ClientConnectorCertificateError
+#import dns.resolver
 import requests
+import contextlib
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.backends import default_backend 
 from cryptography.x509.oid import NameOID, ExtensionOID
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from PIL import Image, ImageTk
+import socketserver
+import http.server
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import pygame
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
+from urllib.parse import urlencode, urlparse, parse_qs
 from OpenSSL import crypto
-from ping3 import ping, verbose_ping
+from ping3 import ping , verbose_ping #PingError
 import certifi
 
-# Tkinter imports
 import tkinter as tk
 from tkinter import ttk, colorchooser, filedialog, messagebox, Toplevel, Label
+
 
 # Application-specific imports
 from getpfclient import PingFederateClientApp  # Import the PingFederateClientApp class
@@ -64,8 +65,6 @@ logger.addHandler(handler)
 # Logging for aiohttp
 logging.basicConfig(level=logging.DEBUG)
 DebugAIOHTTP = True
-message_queue = Queue()
-
 
 # Ensure errors.json exists
 if not os.path.exists("errors.json"):
@@ -174,7 +173,6 @@ if not os.path.exists("errors.json"):
         json.dump([], file)
 
 def log_error(subject, error):
-    # Prepare the error entry
     error_entry = {
         "subject": subject,
         "error": str(error),
@@ -184,18 +182,14 @@ def log_error(subject, error):
     # Log the error using the logger
     logger.error(json.dumps(error_entry))
     
-    # Read the existing errors from the file
+    # Also write the error to errors.json
     try:
         with open("errors.json", "r") as file:
-            # Load the existing errors, or initialize to an empty list if the file is empty or invalid
-            errors = json.load(file) if file.read().strip() else []
+            errors = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         errors = []
-
-    # Append the new error entry
-    errors.append(error_entry)
     
-    # Write the updated errors back to the file
+    errors.append(error_entry)
     with open("errors.json", "w") as file:
         json.dump(errors, file, indent=4)
 
@@ -1754,19 +1748,23 @@ def play_audio():
         log_error("Play audio failed",e)
 
 
+
 class NSLookup:
-    def __init__(self, master, style, thread_message_queue):
+    def __init__(self, master, style):
         self.master = master
         self.style = style
         self.theme = style
         self.is_collapsed = False
-        self.thread_message_queue = thread_message_queue
         self.setup_ui()
         self.domains = {
             "production": self.load_domains("production_domains.json", "production"),
             "qa": self.load_domains("qa_domains.json", "qa"),
             "development": self.load_domains("development_domains.json", "development")
         }
+        self.dns_history = self.load_dns_history()
+        self.populate_table_from_history("production")
+        self.populate_table_from_history("qa")
+        self.populate_table_from_history("development")
         self.update_nslookup_table("production")
         self.update_nslookup_table("qa")
         self.update_nslookup_table("development")
@@ -1789,6 +1787,7 @@ class NSLookup:
     def setup_table_ui(self, frame, env):
         style = ttk.Style()
 
+        colors = NORD_STYLES[self.theme]
         table_title_frame = ttk.Frame(frame)
         table_title_frame.grid(row=0, column=0, columnspan=5, sticky="ew")
         ttk.Label(table_title_frame, text=f"{env.capitalize()} NSLookup").pack(side=tk.LEFT)
@@ -1889,12 +1888,24 @@ class NSLookup:
         with open("dns_history.json", "w") as file:
             json.dump(history, file)
 
-    async def resolve_domain(self, domain):
+    def populate_table_from_history(self, env):
+        table = getattr(self, f"{env}_table")
+        dns_history = self.dns_history
+        for domain in self.domains[env]:
+            if domain in dns_history:
+                history = dns_history[domain]["history"]
+                last_entry = history[-1]
+                last_ip_change = dns_history[domain].get("last_ip_change", "N/A")
+                table.insert("", "end", values=(domain, last_entry["name"], last_entry["ip_address"], last_ip_change, last_entry["hanger"], last_entry["timestamp"]))
+
+    def resolve_domain(self, domain):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         resolver = aiodns.DNSResolver()
         start_time = datetime.now()
         try:
-            answers = await resolver.query(domain, 'A')
-            cname = await resolver.query(domain, 'CNAME')
+            answers = loop.run_until_complete(resolver.query(domain, 'A'))
+            cname = loop.run_until_complete(resolver.query(domain, 'CNAME'))
             name = cname.cname if cname else "No CNAME"
             ip_address = answers[0].host if answers else "No A record"
             hanger = self.get_hanger(name)
@@ -1905,34 +1916,39 @@ class NSLookup:
             resolve_time = (datetime.now() - start_time).total_seconds()
             return (domain, "Error", str(e), "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), resolve_time)
 
-    async def update_nslookup_table_async(self, env):
+    def update_nslookup_table(self, env):
         table = getattr(self, f"{env}_table")
         table.delete(*table.get_children())  # Clear the table
-        tasks = [self.resolve_domain(domain) for domain in self.domains[env]]
-        results = await asyncio.gather(*tasks)
-        dns_history = self.load_dns_history()
-        for result in results:
-            domain, name, ip_address, hanger, timestamp, resolve_time = result
-            last_ip_change = dns_history.get(domain, {}).get("last_ip_change", "N/A")
-            if domain not in dns_history:
-                dns_history[domain] = {"history": []}
-            dns_history[domain]["history"].append({
-                "ip_address": ip_address,
-                "resolve_time": resolve_time,
-                "timestamp": timestamp
-            })
-            if len(dns_history[domain]["history"]) > 2:
-                dns_history[domain]["history"].pop(0)
-            if len(dns_history[domain]["history"]) > 1 and dns_history[domain]["history"][-1]["ip_address"] != dns_history[domain]["history"][-2]["ip_address"]:
-                last_ip_change = timestamp
-                dns_history[domain]["last_ip_change"] = last_ip_change
-            table.insert("", "end", values=(domain, name, ip_address, last_ip_change, hanger, timestamp))
-        self.save_dns_history(dns_history)
-        refresh_time = int(getattr(self, f"{env}_refresh_time_entry").get()) * 1000  # Convert seconds to milliseconds
-        self.master.after(refresh_time, lambda: asyncio.run(self.update_nslookup_table_async(env)))  # Auto-refresh based on user input
 
-    def update_nslookup_table(self, env):
-        asyncio.run(self.update_nslookup_table_async(env))
+        def resolve_domain_thread(domain):
+            return self.resolve_domain(domain)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(resolve_domain_thread, domain) for domain in self.domains[env]]
+            dns_history = self.load_dns_history()
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                domain, name, ip_address, hanger, timestamp, resolve_time = result
+                last_ip_change = dns_history.get(domain, {}).get("last_ip_change", "N/A")
+                if domain not in dns_history:
+                    dns_history[domain] = {"history": []}
+                dns_history[domain]["history"].append({
+                    "name": name,
+                    "ip_address": ip_address,
+                    "resolve_time": resolve_time,
+                    "timestamp": timestamp,
+                    "hanger": hanger
+                })
+                if len(dns_history[domain]["history"]) > 2:
+                    dns_history[domain]["history"].pop(0)
+                if len(dns_history[domain]["history"]) > 1 and dns_history[domain]["history"][-1]["ip_address"] != dns_history[domain]["history"][-2]["ip_address"]:
+                    last_ip_change = timestamp
+                    dns_history[domain]["last_ip_change"] = last_ip_change
+                table.insert("", "end", values=(domain, name, ip_address, last_ip_change, hanger, timestamp))
+            self.save_dns_history(dns_history)
+
+        refresh_time = int(getattr(self, f"{env}_refresh_time_entry").get()) * 1000  # Convert seconds to milliseconds
+        self.master.after(refresh_time, lambda: self.update_nslookup_table(env))  # Auto-refresh based on user input
 
     def get_hanger(self, name):
         for key, value in hanger_mappings.items():
@@ -1940,14 +1956,11 @@ class NSLookup:
                 return value
         return 'Unknown'
 
-
-
 class HTTPRequest:
-    def __init__(self, master, style, thread_message_queue):
+    def __init__(self, master, style):
         self.master = master
         self.style = style
         self.is_collapsed = False
-        self.thread_message_queue = thread_message_queue
         self.ignore_ssl_verification = False
         self.production_ignore_ssl = False
         self.qa_ignore_ssl = False
@@ -2156,7 +2169,6 @@ class HTTPRequest:
             ssl_context.load_verify_locations(cert_path)
         connector = aiohttp.TCPConnector(ssl=ssl_context)
 
-        # Regex pattern to extract hostname and port, optionally matching the scheme
         pattern = re.compile(r'^(?:http[s]?://)?([^:/\s]+)(?::(\d+))?')
         match = pattern.match(url)
         if match:
@@ -2166,18 +2178,16 @@ class HTTPRequest:
             print(f"Invalid URL: {url}")
             return (url, regex, port, use_ssl, "Error", "Invalid URL", "✘", "N/A", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-        try:  # just check url name on certificate
+        try:
             default_ssl_context = ssl.create_default_context()
             default_ssl_context.check_hostname = False
             default_ssl_context.verify_mode = ssl.CERT_NONE
-            # Connect to the server and fetch the certificate
             reader, writer = await asyncio.open_connection(hostname, port, ssl=default_ssl_context, server_hostname=hostname)
             ssl_object = writer.get_extra_info('ssl_object')
             cert_binary = ssl_object.getpeercert(binary_form=True)
             writer.close()
             await writer.wait_closed()
 
-            # Parse the certificate
             x509_cert = x509.load_der_x509_certificate(cert_binary, default_backend())
             for attribute in x509_cert.subject:
                 if attribute.oid == x509.NameOID.COMMON_NAME:
@@ -2189,7 +2199,6 @@ class HTTPRequest:
             except x509.ExtensionNotFound:
                 san = []
 
-            # Check if the hostname matches the CN, is in the SAN list, or matches a wildcard certificate
             def match_hostname(hostname, pattern):
                 if pattern.startswith('*.'):
                     return hostname.endswith(pattern[1:])
@@ -2241,20 +2250,30 @@ class HTTPRequest:
                 response_time = (datetime.now() - start_time).total_seconds()
                 return (url, regex, port, False, "Error", str(e), "✘", response_time, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-    async def update_http_table_async(self, env):
+    def update_http_table(self, env):
         table = getattr(self, f"{env}_table")
         table.delete(*table.get_children())  # Clear the table
-        ssl_context = create_combined_ssl_context(CA_path, cert_path) if cert_path else None
 
-        tasks = [self.fetch_url(entry["url"], entry["regex"], entry["port"], entry["use_ssl"], cert_path, env) if entry["use_ssl"] else self.fetch_url_nossl(entry["url"], entry["regex"], entry["port"]) for entry in self.urls[env]]
-        results = await asyncio.gather(*tasks)
-        for result in results:
-            table.insert("", "end", values=result)
+        def fetch_url_thread(url, regex, port, use_ssl, cert_path, env):
+            return asyncio.run(self.fetch_url(url, regex, port, use_ssl, cert_path, env))
+
+        def fetch_url_nossl_thread(url, regex, port):
+            return asyncio.run(self.fetch_url_nossl(url, regex, port))
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for entry in self.urls[env]:
+                if entry["use_ssl"]:
+                    futures.append(executor.submit(fetch_url_thread, entry["url"], entry["regex"], entry["port"], entry["use_ssl"], cert_path, env))
+                else:
+                    futures.append(executor.submit(fetch_url_nossl_thread, entry["url"], entry["regex"], entry["port"]))
+
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                table.insert("", "end", values=result)
+
         refresh_time = int(getattr(self, f"{env}_refresh_time_entry").get()) * 1000  # Convert seconds to milliseconds
-        self.master.after(refresh_time, lambda: asyncio.run(self.update_http_table_async(env)))  # Auto-refresh based on user input
-
-    def update_http_table(self, env):
-        asyncio.run(self.update_http_table_async(env))
+        self.master.after(refresh_time, lambda: self.update_http_table(env))  # Auto-refresh based on user input
 
 class JWKSCheck:
     def __init__(self, master, style):
@@ -2548,71 +2567,41 @@ def main():
 
     apply_theme(theme_var.get())
 
+    def display_message():
+        try:
+            motd = "4oCcV2UgaGF2ZSBhIHN0cmF0ZWdpYyBwbGFuIOKAlCBpdOKAmXMgY2FsbGVkIGRvaW5nIHRoaW5ncy7igJ0K4oCcWW91ciBwZW9wbGUgY29tZSBmaXJzdCwgYW5kIGlmIHlvdSB0cmVhdCB0aGVtIHJpZ2h0LCB0aGV54oCZbGwgdHJlYXQgdGhlIGN1c3RvbWVycyByaWdodC7igJ0K4oCcVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGluIHNlcnZpY2UgaXMgbm90IG1hY2hpbmVzIG9yIOKAmHRoaW5ncy7igJkgVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGlzIG1pbmRzLCBoZWFydHMsIHNwaXJpdHMsIGFuZCBzb3Vscy7igJ0K4oCcWW91IGhhdmUgdG8gdHJlYXQgeW91ciBlbXBsb3llZXMgbGlrZSBjdXN0b21lcnMu4oCdCuKAnFlvdSBkb27igJl0IGhpcmUgZm9yIHNraWxscywgeW91IGhpcmUgZm9yIGF0dGl0dWRlLiBZb3UgY2FuIGFsd2F5cyB0ZWFjaCBza2lsbHMu4oCdCuKAnEEgY29tcGFueSBpcyBzdHJvbmdlciBpZiBpdCBpcyBib3VuZCBieSBsb3ZlIHJhdGhlciB0aGFuIGJ5IGZlYXIu4oCdCuKAnFRoaW5rIHNtYWxsIGFuZCBhY3Qgc21hbGwsIGFuZCB3ZeKAmWxsIGdldCBiaWdnZXIuIFRoaW5rIGJpZyBhbmQgYWN0IGJpZywgYW5kIHdl4oCZbGwgZ2V0IHNtYWxsZXIu4oCdCuKAnElmIHlvdeKAmXJlIGNyYXp5IGVub3VnaCB0byBkbyB3aGF0IHlvdSBsb3ZlIGZvciBhIGxpdmluZywgdGhlbiB5b3XigJlyZSBib3VuZCB0byBjcmVhdGUgYSBsaWZlIHRoYXQgbWF0dGVycy7igJ0K4oCcSSB0ZWxsIG15IGVtcGxveWVlcyB0aGF0IHdl4oCZcmUgaW4gdGhlIHNlcnZpY2UgYnVzaW5lc3MsIGFuZCBpdOKAmXMgaW5jaWRlbnRhbCB0aGF0IHdlIGZseSBhaXJwbGFuZXMu4oCdCuKAnEp1c3QgYmVjYXVzZSB5b3UgZG9u4oCZdCBhbm5vdW5jZSB5b3VyIHBsYW4gZG9lc27igJl0IG1lYW4geW91IGRvbuKAmXQgaGF2ZSBvbmUu4oCdCuKAnEkgZm9yZ2l2ZSBhbGwgcGVyc29uYWwgd2Vha25lc3NlcyBleGNlcHQgZWdvbWFuaWEgYW5kIHByZXRlbnNpb24u4oCdCuKAnElmIHlvdSBkb27igJl0IHRyZWF0IHlvdXIgb3duIHBlb3BsZSB3ZWxsLCB0aGV5IHdvbuKAmXQgdHJlYXQgb3RoZXIgcGVvcGxlIHdlbGwu4oCdCuKAnFRoZSBidXNpbmVzcyBvZiBidXNpbmVzcyBpcyBwZW9wbGUu4oCdCuKAnElmIHlvdSBjcmVhdGUgYW4gZW52aXJvbm1lbnQgd2hlcmUgdGhlIHBlb3BsZSB0cnVseSBwYXJ0aWNpcGF0ZSwgeW91IGRvbuKAmXQgbmVlZCBjb250cm9sLiBUaGV5IGtub3cgd2hhdCBuZWVkcyB0byBiZSBkb25lIGFuZCB0aGV5IGRvIGl0LuKAnQrigJxMZWFkaW5nIGFuIG9yZ2FuaXphdGlvbiBpcyBhcyBtdWNoIGFib3V0IHNvdWwgYXMgaXQgaXMgYWJvdXQgc3lzdGVtcy4gRWZmZWN0aXZlIGxlYWRlcnNoaXAgZmluZHMgaXRzIHNvdXJjZSBpbiB1bmRlcnN0YW5kaW5nLuKAnQrigJxJIGxlYXJuZWQgaXQgYnkgZG9pbmcgaXQsIGFuZCBJIHdhcyBzY2FyZWQgdG8gZGVhdGgu4oCdCuKAnEkgdGhpbmsgbXkgZ3JlYXRlc3QgbW9tZW50IGluIGJ1c2luZXNzIHdhcyB3aGVuIHRoZSBmaXJzdCBTb3V0aHdlc3QgYWlycGxhbmUgYXJyaXZlZCBhZnRlciBmb3VyIHllYXJzIG9mIGxpdGlnYXRpb24gYW5kIEkgd2Fsa2VkIHVwIHRvIGl0IGFuZCBJIGtpc3NlZCB0aGF0IGJhYnkgb24gdGhlIGxpcHMgYW5kIEkgY3JpZWQu4oCdCiJXaGVuIGl0IGNvbWVzIHRvIGdldHRpbmcgdGhpbmdzIGRvbmUsIHdlIG5lZWQgZmV3ZXIgYXJjaGl0ZWN0cyBhbmQgbW9yZSBicmlja2xheWVycy4iCg=="
+            decoded_motd = base64.b64decode(motd).decode('utf-8')
+            sayings = decoded_motd.split("\n")
+            message = random.choice(sayings).strip()
+        except Exception as e:
+                message = "Please wait for first update, thanks for your patience."
+
+        # Create a Toplevel window
+        message_window = Toplevel(root)
+        message_window.title("Message of the Day")
+        message_window.geometry("400x200")
+        Label(message_window, text=message, wraplength=350, padx=10, pady=10).pack(expand=True)
+        return message_window
+
+    message_window = display_message()
 
     def initialize_tools():
         global first_run
-        thread_message_queue = queue.Queue()
-
-        def display_message():
-            try:
-                motd = "4oCcV2UgaGF2ZSBhIHN0cmF0ZWdpYyBwbGFuIOKAlCBpdOKAmXMgY2FsbGVkIGRvaW5nIHRoaW5ncy7igJ0K4oCcWW91ciBwZW9wbGUgY29tZSBmaXJzdCwgYW5kIGlmIHlvdSB0cmVhdCB0aGVtIHJpZ2h0LCB0aGV54oCZbGwgdHJlYXQgdGhlIGN1c3RvbWVycyByaWdodC7igJ0K4oCcVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGluIHNlcnZpY2UgaXMgbm90IG1hY2hpbmVzIG9yIOKAmHRoaW5ncy7igJkgVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGlzIG1pbmRzLCBoZWFydHMsIHNwaXJpdHMsIGFuZCBzb3Vscy7igJ0K4oCcWW91IGhhdmUgdG8gdHJlYXQgeW91ciBlbXBsb3llZXMgbGlrZSBjdXN0b21lcnMu4oCdCuKAnFlvdSBkb27igJl0IGhpcmUgZm9yIHNraWxscywgeW91IGhpcmUgZm9yIGF0dGl0dWRlLiBZb3UgY2FuIGFsd2F5cyB0ZWFjaCBza2lsbHMu4oCdCuKAnEEgY29tcGFueSBpcyBzdHJvbmdlciBpZiBpdCBpcyBib3VuZCBieSBsb3ZlIHJhdGhlciB0aGFuIGJ5IGZlYXIu4oCdCuKAnFRoaW5rIHNtYWxsIGFuZCBhY3Qgc21hbGwsIGFuZCB3ZeKAmWxsIGdldCBiaWdnZXIuIFRoaW5rIGJpZyBhbmQgYWN0IGJpZywgYW5kIHdl4oCZbGwgZ2V0IHNtYWxsZXIu4oCdCuKAnElmIHlvdeKAmXJlIGNyYXp5IGVub3VnaCB0byBkbyB3aGF0IHlvdSBsb3ZlIGZvciBhIGxpdmluZywgdGhlbiB5b3XigJlyZSBib3VuZCB0byBjcmVhdGUgYSBsaWZlIHRoYXQgbWF0dGVycy7igJ0K4oCcSSB0ZWxsIG15IGVtcGxveWVlcyB0aGF0IHdl4oCZcmUgaW4gdGhlIHNlcnZpY2UgYnVzaW5lc3MsIGFuZCBpdOKAmXMgaW5jaWRlbnRhbCB0aGF0IHdlIGZseSBhaXJwbGFuZXMu4oCdCuKAnEp1c3QgYmVjYXVzZSB5b3UgZG9u4oCZdCBhbm5vdW5jZSB5b3VyIHBsYW4gZG9lc27igJl0IG1lYW4geW91IGRvbuKAmXQgaGF2ZSBvbmUu4oCdCuKAnEkgZm9yZ2l2ZSBhbGwgcGVyc29uYWwgd2Vha25lc3NlcyBleGNlcHQgZWdvbWFuaWEgYW5kIHByZXRlbnNpb24u4oCdCuKAnElmIHlvdSBkb27igJl0IHRyZWF0IHlvdXIgb3duIHBlb3BsZSB3ZWxsLCB0aGV5IHdvbuKAmXQgdHJlYXQgb3RoZXIgcGVvcGxlIHdlbGwu4oCdCuKAnFRoZSBidXNpbmVzcyBvZiBidXNpbmVzcyBpcyBwZW9wbGUu4oCdCuKAnElmIHlvdSBjcmVhdGUgYW4gZW52aXJvbm1lbnQgd2hlcmUgdGhlIHBlb3BsZSB0cnVseSBwYXJ0aWNpcGF0ZSwgeW91IGRvbuKAmXQgbmVlZCBjb250cm9sLiBUaGV5IGtub3cgd2hhdCBuZWVkcyB0byBiZSBkb25lIGFuZCB0aGV5IGRvIGl0LuKAnQrigJxMZWFkaW5nIGFuIG9yZ2FuaXphdGlvbiBpcyBhcyBtdWNoIGFib3V0IHNvdWwgYXMgaXQgaXMgYWJvdXQgc3lzdGVtcy4gRWZmZWN0aXZlIGxlYWRlcnNoaXAgZmluZHMgaXRzIHNvdXJjZSBpbiB1bmRlcnN0YW5kaW5nLuKAnQrigJxJIGxlYXJuZWQgaXQgYnkgZG9pbmcgaXQsIGFuZCBJIHdhcyBzY2FyZWQgdG8gZGVhdGgu4oCdCuKAnEkgdGhpbmsgbXkgZ3JlYXRlc3QgbW9tZW50IGluIGJ1c2luZXNzIHdhcyB3aGVuIHRoZSBmaXJzdCBTb3V0aHdlc3QgYWlycGxhbmUgYXJyaXZlZCBhZnRlciBmb3VyIHllYXJzIG9mIGxpdGlnYXRpb24gYW5kIEkgd2Fsa2VkIHVwIHRvIGl0IGFuZCBJIGtpc3NlZCB0aGF0IGJhYnkgb24gdGhlIGxpcHMgYW5kIEkgY3JpZWQu4oCdCiJXaGVuIGl0IGNvbWVzIHRvIGdldHRpbmcgdGhpbmdzIGRvbmUsIHdlIG5lZWQgZmV3ZXIgYXJjaGl0ZWN0cyBhbmQgbW9yZSBicmlja2xheWVycy4iCg=="
-                decoded_motd = base64.b64decode(motd).decode('utf-8')
-                sayings = decoded_motd.split("\n")
-                random_message = random.choice(sayings).strip()
-            except Exception as e:
-                    random_message = "Please wait for first update, thanks for your patience."
-
-            # Create a Toplevel window
-            message_window = Toplevel(root)
-            message_window.title("Message of the Day")
-            message_window.geometry("400x200")
-            Label(message_window, text=random_message, wraplength=350, padx=10, pady=10).pack(expand=True)
-            return message_window
-
-        message_window = display_message()
-
-
-        def run_nslookup(thread_message_queue):
-            try:
-                print("NSLookup initializing...")
-                print("Scrollable Frame: ", scrollable_frame)
-                print("Theme Var: ", theme_var.get())
-                print("Thread Message Queue: ", thread_message_queue)
-                
-                nslookup = NSLookup(scrollable_frame, theme_var.get(),thread_message_queue)
-                thread_message_queue.put("NSLookup initialized successfully")
-            except Exception as e:
-                thread_message_queue.put(f"NSLookup startup failed: {e}")
-                log_error("NSLookup startup failed", e)
-
-        def run_http_request(thread_message_queue):
-            try:
-                http_request = HTTPRequest(scrollable_frame, theme_var.get(),thread_message_queue)
-                thread_message_queue.put("HTTPRequest initialized successfully")
-            except Exception as e:
-                thread_message_queue.put(f"HTTPRequest startup failed: {e}")
-                log_error("HTTPRequest startup failed", e)
-
-        nslookup_thread = threading.Thread(target=run_nslookup, args=(thread_message_queue,))
-        http_request_thread = threading.Thread(target=run_http_request, args=(thread_message_queue,))
-
-        nslookup_thread.start()
-        http_request_thread.start()
-
-        nslookup_thread.join()
-        http_request_thread.join()
-
-        while not thread_message_queue.empty():
-            thread_message = thread_message_queue.get()
-           # print(thread_message)
-
         if first_run:
             first_run = False
-
+            nslookup = NSLookup(scrollable_frame, theme_var.get())
+            http_request = HTTPRequest(scrollable_frame, theme_var.get())
+        else:
+            try:
+                nslookup = NSLookup(scrollable_frame, theme_var.get())
+                http_request = HTTPRequest(scrollable_frame, theme_var.get())
+            except Exception as e:
+                print(f"Startup failed: {e}")
+                log_error("Startup failed", e)
         # Close the message window after initialization is complete
-        #message_window.destroy()
+        message_window.destroy()
 
-    root.after(100, initialize_tools)
+    root.after(10, initialize_tools)
     root.mainloop()
 
 def update_ca_path(new_path):

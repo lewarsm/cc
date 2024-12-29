@@ -1,6 +1,6 @@
-# Standard library imports
 import os
 import io
+from io import BytesIO
 import sys
 import json
 import shlex
@@ -15,41 +15,40 @@ import time
 import subprocess
 import ssl
 import threading
-import queue
-from queue import Queue
 import webbrowser
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
-import contextlib
-import socketserver
-import http.server
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlencode, urlparse, parse_qs
-
-# Third-party imports
 import aiodns
 import asyncio
 import aiohttp
 from aiohttp import ClientConnectorCertificateError
+#import dns.resolver
 import requests
+import contextlib
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.backends import default_backend 
 from cryptography.x509.oid import NameOID, ExtensionOID
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from PIL import Image, ImageTk
+import socketserver
+import http.server
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import pygame
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
+from urllib.parse import urlencode, urlparse, parse_qs
 from OpenSSL import crypto
-from ping3 import ping, verbose_ping
+from ping3 import ping , verbose_ping #PingError
 import certifi
 
-# Tkinter imports
 import tkinter as tk
 from tkinter import ttk, colorchooser, filedialog, messagebox, Toplevel, Label
+
 
 # Application-specific imports
 from getpfclient import PingFederateClientApp  # Import the PingFederateClientApp class
@@ -64,8 +63,6 @@ logger.addHandler(handler)
 # Logging for aiohttp
 logging.basicConfig(level=logging.DEBUG)
 DebugAIOHTTP = True
-message_queue = Queue()
-
 
 # Ensure errors.json exists
 if not os.path.exists("errors.json"):
@@ -174,7 +171,6 @@ if not os.path.exists("errors.json"):
         json.dump([], file)
 
 def log_error(subject, error):
-    # Prepare the error entry
     error_entry = {
         "subject": subject,
         "error": str(error),
@@ -184,18 +180,14 @@ def log_error(subject, error):
     # Log the error using the logger
     logger.error(json.dumps(error_entry))
     
-    # Read the existing errors from the file
+    # Also write the error to errors.json
     try:
         with open("errors.json", "r") as file:
-            # Load the existing errors, or initialize to an empty list if the file is empty or invalid
-            errors = json.load(file) if file.read().strip() else []
+            errors = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         errors = []
-
-    # Append the new error entry
-    errors.append(error_entry)
     
-    # Write the updated errors back to the file
+    errors.append(error_entry)
     with open("errors.json", "w") as file:
         json.dump(errors, file, indent=4)
 
@@ -1755,12 +1747,11 @@ def play_audio():
 
 
 class NSLookup:
-    def __init__(self, master, style, thread_message_queue):
+    def __init__(self, master, style):
         self.master = master
         self.style = style
         self.theme = style
         self.is_collapsed = False
-        self.thread_message_queue = thread_message_queue
         self.setup_ui()
         self.domains = {
             "production": self.load_domains("production_domains.json", "production"),
@@ -1789,6 +1780,7 @@ class NSLookup:
     def setup_table_ui(self, frame, env):
         style = ttk.Style()
 
+        colors = NORD_STYLES[self.theme]
         table_title_frame = ttk.Frame(frame)
         table_title_frame.grid(row=0, column=0, columnspan=5, sticky="ew")
         ttk.Label(table_title_frame, text=f"{env.capitalize()} NSLookup").pack(side=tk.LEFT)
@@ -1941,13 +1933,11 @@ class NSLookup:
         return 'Unknown'
 
 
-
 class HTTPRequest:
-    def __init__(self, master, style, thread_message_queue):
+    def __init__(self, master, style):
         self.master = master
         self.style = style
         self.is_collapsed = False
-        self.thread_message_queue = thread_message_queue
         self.ignore_ssl_verification = False
         self.production_ignore_ssl = False
         self.qa_ignore_ssl = False
@@ -2548,71 +2538,41 @@ def main():
 
     apply_theme(theme_var.get())
 
+    def display_message():
+        try:
+            motd = "4oCcV2UgaGF2ZSBhIHN0cmF0ZWdpYyBwbGFuIOKAlCBpdOKAmXMgY2FsbGVkIGRvaW5nIHRoaW5ncy7igJ0K4oCcWW91ciBwZW9wbGUgY29tZSBmaXJzdCwgYW5kIGlmIHlvdSB0cmVhdCB0aGVtIHJpZ2h0LCB0aGV54oCZbGwgdHJlYXQgdGhlIGN1c3RvbWVycyByaWdodC7igJ0K4oCcVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGluIHNlcnZpY2UgaXMgbm90IG1hY2hpbmVzIG9yIOKAmHRoaW5ncy7igJkgVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGlzIG1pbmRzLCBoZWFydHMsIHNwaXJpdHMsIGFuZCBzb3Vscy7igJ0K4oCcWW91IGhhdmUgdG8gdHJlYXQgeW91ciBlbXBsb3llZXMgbGlrZSBjdXN0b21lcnMu4oCdCuKAnFlvdSBkb27igJl0IGhpcmUgZm9yIHNraWxscywgeW91IGhpcmUgZm9yIGF0dGl0dWRlLiBZb3UgY2FuIGFsd2F5cyB0ZWFjaCBza2lsbHMu4oCdCuKAnEEgY29tcGFueSBpcyBzdHJvbmdlciBpZiBpdCBpcyBib3VuZCBieSBsb3ZlIHJhdGhlciB0aGFuIGJ5IGZlYXIu4oCdCuKAnFRoaW5rIHNtYWxsIGFuZCBhY3Qgc21hbGwsIGFuZCB3ZeKAmWxsIGdldCBiaWdnZXIuIFRoaW5rIGJpZyBhbmQgYWN0IGJpZywgYW5kIHdl4oCZbGwgZ2V0IHNtYWxsZXIu4oCdCuKAnElmIHlvdeKAmXJlIGNyYXp5IGVub3VnaCB0byBkbyB3aGF0IHlvdSBsb3ZlIGZvciBhIGxpdmluZywgdGhlbiB5b3XigJlyZSBib3VuZCB0byBjcmVhdGUgYSBsaWZlIHRoYXQgbWF0dGVycy7igJ0K4oCcSSB0ZWxsIG15IGVtcGxveWVlcyB0aGF0IHdl4oCZcmUgaW4gdGhlIHNlcnZpY2UgYnVzaW5lc3MsIGFuZCBpdOKAmXMgaW5jaWRlbnRhbCB0aGF0IHdlIGZseSBhaXJwbGFuZXMu4oCdCuKAnEp1c3QgYmVjYXVzZSB5b3UgZG9u4oCZdCBhbm5vdW5jZSB5b3VyIHBsYW4gZG9lc27igJl0IG1lYW4geW91IGRvbuKAmXQgaGF2ZSBvbmUu4oCdCuKAnEkgZm9yZ2l2ZSBhbGwgcGVyc29uYWwgd2Vha25lc3NlcyBleGNlcHQgZWdvbWFuaWEgYW5kIHByZXRlbnNpb24u4oCdCuKAnElmIHlvdSBkb27igJl0IHRyZWF0IHlvdXIgb3duIHBlb3BsZSB3ZWxsLCB0aGV5IHdvbuKAmXQgdHJlYXQgb3RoZXIgcGVvcGxlIHdlbGwu4oCdCuKAnFRoZSBidXNpbmVzcyBvZiBidXNpbmVzcyBpcyBwZW9wbGUu4oCdCuKAnElmIHlvdSBjcmVhdGUgYW4gZW52aXJvbm1lbnQgd2hlcmUgdGhlIHBlb3BsZSB0cnVseSBwYXJ0aWNpcGF0ZSwgeW91IGRvbuKAmXQgbmVlZCBjb250cm9sLiBUaGV5IGtub3cgd2hhdCBuZWVkcyB0byBiZSBkb25lIGFuZCB0aGV5IGRvIGl0LuKAnQrigJxMZWFkaW5nIGFuIG9yZ2FuaXphdGlvbiBpcyBhcyBtdWNoIGFib3V0IHNvdWwgYXMgaXQgaXMgYWJvdXQgc3lzdGVtcy4gRWZmZWN0aXZlIGxlYWRlcnNoaXAgZmluZHMgaXRzIHNvdXJjZSBpbiB1bmRlcnN0YW5kaW5nLuKAnQrigJxJIGxlYXJuZWQgaXQgYnkgZG9pbmcgaXQsIGFuZCBJIHdhcyBzY2FyZWQgdG8gZGVhdGgu4oCdCuKAnEkgdGhpbmsgbXkgZ3JlYXRlc3QgbW9tZW50IGluIGJ1c2luZXNzIHdhcyB3aGVuIHRoZSBmaXJzdCBTb3V0aHdlc3QgYWlycGxhbmUgYXJyaXZlZCBhZnRlciBmb3VyIHllYXJzIG9mIGxpdGlnYXRpb24gYW5kIEkgd2Fsa2VkIHVwIHRvIGl0IGFuZCBJIGtpc3NlZCB0aGF0IGJhYnkgb24gdGhlIGxpcHMgYW5kIEkgY3JpZWQu4oCdCiJXaGVuIGl0IGNvbWVzIHRvIGdldHRpbmcgdGhpbmdzIGRvbmUsIHdlIG5lZWQgZmV3ZXIgYXJjaGl0ZWN0cyBhbmQgbW9yZSBicmlja2xheWVycy4iCg=="
+            decoded_motd = base64.b64decode(motd).decode('utf-8')
+            sayings = decoded_motd.split("\n")
+            message = random.choice(sayings).strip()
+        except Exception as e:
+                message = "Please wait for first update, thanks for your patience."
+
+        # Create a Toplevel window
+        message_window = Toplevel(root)
+        message_window.title("Message of the Day")
+        message_window.geometry("400x200")
+        Label(message_window, text=message, wraplength=350, padx=10, pady=10).pack(expand=True)
+        return message_window
+
+    message_window = display_message()
 
     def initialize_tools():
         global first_run
-        thread_message_queue = queue.Queue()
-
-        def display_message():
-            try:
-                motd = "4oCcV2UgaGF2ZSBhIHN0cmF0ZWdpYyBwbGFuIOKAlCBpdOKAmXMgY2FsbGVkIGRvaW5nIHRoaW5ncy7igJ0K4oCcWW91ciBwZW9wbGUgY29tZSBmaXJzdCwgYW5kIGlmIHlvdSB0cmVhdCB0aGVtIHJpZ2h0LCB0aGV54oCZbGwgdHJlYXQgdGhlIGN1c3RvbWVycyByaWdodC7igJ0K4oCcVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGluIHNlcnZpY2UgaXMgbm90IG1hY2hpbmVzIG9yIOKAmHRoaW5ncy7igJkgVGhlIGVzc2VudGlhbCBkaWZmZXJlbmNlIGlzIG1pbmRzLCBoZWFydHMsIHNwaXJpdHMsIGFuZCBzb3Vscy7igJ0K4oCcWW91IGhhdmUgdG8gdHJlYXQgeW91ciBlbXBsb3llZXMgbGlrZSBjdXN0b21lcnMu4oCdCuKAnFlvdSBkb27igJl0IGhpcmUgZm9yIHNraWxscywgeW91IGhpcmUgZm9yIGF0dGl0dWRlLiBZb3UgY2FuIGFsd2F5cyB0ZWFjaCBza2lsbHMu4oCdCuKAnEEgY29tcGFueSBpcyBzdHJvbmdlciBpZiBpdCBpcyBib3VuZCBieSBsb3ZlIHJhdGhlciB0aGFuIGJ5IGZlYXIu4oCdCuKAnFRoaW5rIHNtYWxsIGFuZCBhY3Qgc21hbGwsIGFuZCB3ZeKAmWxsIGdldCBiaWdnZXIuIFRoaW5rIGJpZyBhbmQgYWN0IGJpZywgYW5kIHdl4oCZbGwgZ2V0IHNtYWxsZXIu4oCdCuKAnElmIHlvdeKAmXJlIGNyYXp5IGVub3VnaCB0byBkbyB3aGF0IHlvdSBsb3ZlIGZvciBhIGxpdmluZywgdGhlbiB5b3XigJlyZSBib3VuZCB0byBjcmVhdGUgYSBsaWZlIHRoYXQgbWF0dGVycy7igJ0K4oCcSSB0ZWxsIG15IGVtcGxveWVlcyB0aGF0IHdl4oCZcmUgaW4gdGhlIHNlcnZpY2UgYnVzaW5lc3MsIGFuZCBpdOKAmXMgaW5jaWRlbnRhbCB0aGF0IHdlIGZseSBhaXJwbGFuZXMu4oCdCuKAnEp1c3QgYmVjYXVzZSB5b3UgZG9u4oCZdCBhbm5vdW5jZSB5b3VyIHBsYW4gZG9lc27igJl0IG1lYW4geW91IGRvbuKAmXQgaGF2ZSBvbmUu4oCdCuKAnEkgZm9yZ2l2ZSBhbGwgcGVyc29uYWwgd2Vha25lc3NlcyBleGNlcHQgZWdvbWFuaWEgYW5kIHByZXRlbnNpb24u4oCdCuKAnElmIHlvdSBkb27igJl0IHRyZWF0IHlvdXIgb3duIHBlb3BsZSB3ZWxsLCB0aGV5IHdvbuKAmXQgdHJlYXQgb3RoZXIgcGVvcGxlIHdlbGwu4oCdCuKAnFRoZSBidXNpbmVzcyBvZiBidXNpbmVzcyBpcyBwZW9wbGUu4oCdCuKAnElmIHlvdSBjcmVhdGUgYW4gZW52aXJvbm1lbnQgd2hlcmUgdGhlIHBlb3BsZSB0cnVseSBwYXJ0aWNpcGF0ZSwgeW91IGRvbuKAmXQgbmVlZCBjb250cm9sLiBUaGV5IGtub3cgd2hhdCBuZWVkcyB0byBiZSBkb25lIGFuZCB0aGV5IGRvIGl0LuKAnQrigJxMZWFkaW5nIGFuIG9yZ2FuaXphdGlvbiBpcyBhcyBtdWNoIGFib3V0IHNvdWwgYXMgaXQgaXMgYWJvdXQgc3lzdGVtcy4gRWZmZWN0aXZlIGxlYWRlcnNoaXAgZmluZHMgaXRzIHNvdXJjZSBpbiB1bmRlcnN0YW5kaW5nLuKAnQrigJxJIGxlYXJuZWQgaXQgYnkgZG9pbmcgaXQsIGFuZCBJIHdhcyBzY2FyZWQgdG8gZGVhdGgu4oCdCuKAnEkgdGhpbmsgbXkgZ3JlYXRlc3QgbW9tZW50IGluIGJ1c2luZXNzIHdhcyB3aGVuIHRoZSBmaXJzdCBTb3V0aHdlc3QgYWlycGxhbmUgYXJyaXZlZCBhZnRlciBmb3VyIHllYXJzIG9mIGxpdGlnYXRpb24gYW5kIEkgd2Fsa2VkIHVwIHRvIGl0IGFuZCBJIGtpc3NlZCB0aGF0IGJhYnkgb24gdGhlIGxpcHMgYW5kIEkgY3JpZWQu4oCdCiJXaGVuIGl0IGNvbWVzIHRvIGdldHRpbmcgdGhpbmdzIGRvbmUsIHdlIG5lZWQgZmV3ZXIgYXJjaGl0ZWN0cyBhbmQgbW9yZSBicmlja2xheWVycy4iCg=="
-                decoded_motd = base64.b64decode(motd).decode('utf-8')
-                sayings = decoded_motd.split("\n")
-                random_message = random.choice(sayings).strip()
-            except Exception as e:
-                    random_message = "Please wait for first update, thanks for your patience."
-
-            # Create a Toplevel window
-            message_window = Toplevel(root)
-            message_window.title("Message of the Day")
-            message_window.geometry("400x200")
-            Label(message_window, text=random_message, wraplength=350, padx=10, pady=10).pack(expand=True)
-            return message_window
-
-        message_window = display_message()
-
-
-        def run_nslookup(thread_message_queue):
-            try:
-                print("NSLookup initializing...")
-                print("Scrollable Frame: ", scrollable_frame)
-                print("Theme Var: ", theme_var.get())
-                print("Thread Message Queue: ", thread_message_queue)
-                
-                nslookup = NSLookup(scrollable_frame, theme_var.get(),thread_message_queue)
-                thread_message_queue.put("NSLookup initialized successfully")
-            except Exception as e:
-                thread_message_queue.put(f"NSLookup startup failed: {e}")
-                log_error("NSLookup startup failed", e)
-
-        def run_http_request(thread_message_queue):
-            try:
-                http_request = HTTPRequest(scrollable_frame, theme_var.get(),thread_message_queue)
-                thread_message_queue.put("HTTPRequest initialized successfully")
-            except Exception as e:
-                thread_message_queue.put(f"HTTPRequest startup failed: {e}")
-                log_error("HTTPRequest startup failed", e)
-
-        nslookup_thread = threading.Thread(target=run_nslookup, args=(thread_message_queue,))
-        http_request_thread = threading.Thread(target=run_http_request, args=(thread_message_queue,))
-
-        nslookup_thread.start()
-        http_request_thread.start()
-
-        nslookup_thread.join()
-        http_request_thread.join()
-
-        while not thread_message_queue.empty():
-            thread_message = thread_message_queue.get()
-           # print(thread_message)
-
         if first_run:
             first_run = False
-
+            nslookup = NSLookup(scrollable_frame, theme_var.get())
+            http_request = HTTPRequest(scrollable_frame, theme_var.get())
+        else:
+            try:
+                nslookup = NSLookup(scrollable_frame, theme_var.get())
+                http_request = HTTPRequest(scrollable_frame, theme_var.get())
+            except Exception as e:
+                print(f"Startup failed: {e}")
+                log_error("Startup failed", e)
         # Close the message window after initialization is complete
-        #message_window.destroy()
+        message_window.destroy()
 
-    root.after(100, initialize_tools)
+    root.after(10, initialize_tools)
     root.mainloop()
 
 def update_ca_path(new_path):
