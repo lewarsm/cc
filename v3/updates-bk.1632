@@ -68,6 +68,10 @@ logger.addHandler(handler)
 logging.basicConfig(level=logging.DEBUG)
 DebugAIOHTTP = True
 
+if os.name == 'nt':
+    Is_Windows = True
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # Ensure errors.json exists
 if not os.path.exists("errors.json"):
     with open("errors.json", "w") as f:
@@ -1992,7 +1996,13 @@ def show_help():
     # Bind double-click event to play audio
     image_label.bind("<Double-1>", lambda e: play_audio())
 
+    # Add a hyperlink to Google
+    link = ttk.Label(frame, text="Visit Google", foreground="blue", cursor="hand2")
+    link.pack(padx=5, pady=5)
+    link.bind("<Button-1>", lambda e: webbrowser.open_new("https://www.google.com"))
+
     ttk.Button(frame, text="Close", command=help_window.destroy).pack(padx=5, pady=5)
+
 def play_audio():
     pygame.mixer.init()
     fun = "aHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL3NvdW5kYm9hcmRzL0NhcnRvb25zL1RIRSBTSU1QU09OUy9NUiBCVVJOUy9NUDMvRVhDRUxMRU5UIC0gQVVESU8gRlJPTSBKQVlVWlVNSS5DT00ubXAz"
@@ -2459,6 +2469,11 @@ class HTTPRequest:
             ssl_context.load_verify_locations(cert_path)
         connector = aiohttp.TCPConnector(ssl=ssl_context)
 
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Content-Type": "application/json"
+        }
+
         pattern = re.compile(r'^(?:http[s]?://)?([^:/\s]+)(?::(\d+))?')
         match = pattern.match(url)
         if match:
@@ -2501,12 +2516,14 @@ class HTTPRequest:
             print(e)
             ssl_match = False
 
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
             try:
                 async with session.get(f"{'https' if use_ssl else 'http'}://{hostname}:{port}") as response:
                     status_code = response.status
                     print("Status Code:", status_code)
                     status_text = await response.text()
+                    print("Response:", status_text)
+
                     if regex and not re.search(regex, status_text):
                         status_text = "Pattern Failed"
                     elif regex and re.search(regex, status_text):
@@ -2524,7 +2541,13 @@ class HTTPRequest:
 
     async def fetch_url_nossl(self, url, regex, port):
         start_time = datetime.now()
-        async with aiohttp.ClientSession() as session:
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Content-Type": "application/json"
+        }
+
+        async with aiohttp.ClientSession(headers=headers) as session:
             try:
                 async with session.get(f"http://{url}:{port}") as response:
                     status_code = response.status
