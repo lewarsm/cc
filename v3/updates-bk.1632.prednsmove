@@ -2236,24 +2236,19 @@ class NSLookup:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             resolve_time = (datetime.now() - start_time).total_seconds()
             return (domain, name, ip_address, hanger, timestamp, resolve_time)
-        except (aiodns.error.DNSError, Exception) as e:
-            print(f"Async DNS resolution failed for {domain}: {e}")
-            # Fallback to synchronous dns.resolver
-            try:
-                answers = dns.resolver.resolve(domain, 'A')
+        except:
+            answers = dns.resolver.resolve(domain, 'A')
+            if answers: 
                 name = domain
                 ip_address = answers[0].to_text() if len(answers) > 0 else "No A record"
                 hanger = self.get_hanger(name)
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 resolve_time = (datetime.now() - start_time).total_seconds()
                 return (domain, name, ip_address, hanger, timestamp, resolve_time)
-            except dns.resolver.NXDOMAIN:
+            else:
                 resolve_time = (datetime.now() - start_time).total_seconds()
                 return (domain, "DNS_Failed", "", "Unknown", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), resolve_time)
-            except Exception as e:
-                resolve_time = (datetime.now() - start_time).total_seconds()
-                return (domain, "Error", str(e), "Unknown", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), resolve_time)
-                
+
     def update_nslookup_table(self, env):
         table = getattr(self, f"{env}_table")
         table.delete(*table.get_children())  # Clear the table
