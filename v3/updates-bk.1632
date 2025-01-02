@@ -288,21 +288,28 @@ def validate_url_and_check_sql_injection(url):
 def is_connected_to_vpn():
     # Get the current network connections
     connections = psutil.net_if_addrs()
+    interface_stats = psutil.net_if_stats()
+    initial_counters = psutil.net_io_counters(pernic=True)
 
     # Known VPN interface names (can vary based on the VPN service)
-    vpn_interfaces = ["tun0", "tun1", "ppp0", "ppp1", "tap0", "tap1"]
+    vpn_interfaces = ["utun0", "utun1", "utun2","utun3", "utun4","tun0", "tun1", "ppp0", "ppp1", "tap0", "tap1"]
     vpn_ip = None
     primary_ip = None
+
+    time.sleep(2)  # Wait for 2 seconds to check if counters are increasing
+    final_counters = psutil.net_io_counters(pernic=True)
 
     for interface, addrs in connections.items():
         for addr in addrs:
             if addr.family == socket.AF_INET:  # Check if it's an IPv4 address
                 ip_address = addr.address
                 if interface in vpn_interfaces:
-                    vpn_ip = ip_address
+                    if (final_counters[interface].bytes_sent > initial_counters[interface].bytes_sent or
+                        final_counters[interface].bytes_recv > initial_counters[interface].bytes_recv):
+                        vpn_ip = ip_address
                 elif not primary_ip:
                     primary_ip = ip_address
-    
+
     if vpn_ip:
         print(f"VPN detected: VPN IP Address {vpn_ip}, Primary Network IP Address {primary_ip}")
         return True, vpn_ip, primary_ip
@@ -327,7 +334,7 @@ def dump_all_variables():
         print()
 
 async def resolve_dns(domain):
-    resolver = aiodns.DNSResolver()
+    resolver = aiodns.DNSResolver(timeout=4)
     try:
         result = await resolver.query(domain, 'A')
         return result
@@ -583,7 +590,7 @@ def open_tcp_tools_window(theme):
     result_text = create_scrollable_text(frame, 20, 60, theme, 3, 0, 2)
 
     async def run_nslookup(host):
-        resolver = aiodns.DNSResolver()
+        resolver = aiodns.DNSResolver(timeout=4)
         try:
             result_text.delete(1.0, tk.END)
             record_types = ['A', 'AAAA', 'CNAME', 'MX', 'TXT']
@@ -2225,7 +2232,7 @@ class NSLookup:
     def resolve_domain(self, domain):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        resolver = aiodns.DNSResolver()
+        resolver = aiodns.DNSResolver(timeout=4)
         start_time = datetime.now()
         try:
             answers = loop.run_until_complete(resolver.query(domain, 'A'))
@@ -2253,7 +2260,7 @@ class NSLookup:
             except Exception as e:
                 resolve_time = (datetime.now() - start_time).total_seconds()
                 return (domain, "Error", str(e), "Unknown", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), resolve_time)
-                
+
     def update_nslookup_table(self, env):
         table = getattr(self, f"{env}_table")
         table.delete(*table.get_children())  # Clear the table
@@ -2867,7 +2874,19 @@ def main():
     ttk.Button(top_frame, text="Backup Settings", command=lambda: backup_data(NSLookup, HTTPRequest)).pack(side=tk.RIGHT, padx=5, pady=5)
     ttk.Button(top_frame, text="Restore Settings", command=restore_data).pack(side=tk.RIGHT, padx=5, pady=5)
 
+
     # Add VPN indicator
+    def update_vpn_status():
+        vpn_connected, vpn_ip, local_ip = is_connected_to_vpn()
+        bulb_color = "green" if vpn_connected else "blue"
+        bulb_image = Image.open(f"{bulb_color}_bulb.png")  # Ensure you have green_bulb.png and blue_bulb.png images
+        bulb_image = bulb_image.resize((20, 20), Image.Resampling.LANCZOS)
+        bulb_img = ImageTk.PhotoImage(bulb_image)
+        bulb_label.config(image=bulb_img)
+        bulb_label.image = bulb_img  # Keep a reference to avoid garbage collection
+        vpn_label.config(text=f"VPN IP: {vpn_ip}\nLocal IP: {local_ip}")
+        root.after(600000, update_vpn_status)  # Schedule to run every 10 minutes
+
     vpn_connected, vpn_ip, local_ip = is_connected_to_vpn()
     bulb_color = "green" if vpn_connected else "blue"
     bulb_image = Image.open(f"{bulb_color}_bulb.png")  # Ensure you have green_bulb.png and blue_bulb.png images
@@ -2877,9 +2896,9 @@ def main():
     bulb_label.image = bulb_img  # Keep a reference to avoid garbage collection
     bulb_label.pack(side=tk.LEFT, padx=5, pady=5)
 
-    ttk.Label(top_frame, text=f"VPN IP: {vpn_ip}\nLocal IP: {local_ip}").pack(side=tk.LEFT, padx=5, pady=5)
+    vpn_label = ttk.Label(top_frame, text=f"VPN IP: {vpn_ip}\nLocal IP: {local_ip}")
+    vpn_label.pack(side=tk.LEFT, padx=5, pady=5)
     ttk.Button(top_frame, text="Show IP Addresses", command=show_ip_addresses).pack(side=tk.LEFT, padx=5, pady=5)
-
 
     main_frame = ttk.Frame(root, padding="5")
     main_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
