@@ -876,7 +876,24 @@ class PingFederateClientApp:
                 return None
 
 
+def show_ip_addresses():
+    ip_window = Toplevel()
+    ip_window.title("IP Addresses")
+    ip_window.geometry("400x300")
 
+    frame = ttk.Frame(ip_window, padding="10")
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    vpn_connected, vpn_ip, local_ip = is_connected_to_vpn()
+    ip_text = f"VPN IP: {vpn_ip}\nLocal IP: {local_ip}\n\n"
+
+    # Get all IP addresses
+    hostname = socket.gethostname()
+    ip_addresses = socket.gethostbyname_ex(hostname)[2]
+    ip_text += "All IP Addresses:\n" + "\n".join(ip_addresses)
+
+    ttk.Label(frame, text=ip_text).pack(padx=5, pady=5)
+    ttk.Button(frame, text="Close", command=ip_window.destroy).pack(padx=5, pady=5)
 
 def open_jwt_window(theme):
     jwt_window = CustomWindow("JWT Decoder", 1000, 400, theme)
@@ -2828,6 +2845,20 @@ def main():
     ttk.Button(top_frame, text="Custom Theme", command=open_custom_theme_window).pack(side=tk.RIGHT, padx=5, pady=5)
     ttk.Button(top_frame, text="Backup Settings", command=lambda: backup_data(NSLookup, HTTPRequest)).pack(side=tk.RIGHT, padx=5, pady=5)
     ttk.Button(top_frame, text="Restore Settings", command=restore_data).pack(side=tk.RIGHT, padx=5, pady=5)
+
+    # Add VPN indicator
+    vpn_connected, vpn_ip, local_ip = is_connected_to_vpn()
+    bulb_color = "green" if vpn_connected else "blue"
+    bulb_image = Image.open(f"{bulb_color}_bulb.png")  # Ensure you have green_bulb.png and blue_bulb.png images
+    bulb_image = bulb_image.resize((20, 20), Image.Resampling.LANCZOS)
+    bulb_img = ImageTk.PhotoImage(bulb_image)
+    bulb_label = ttk.Label(top_frame, image=bulb_img)
+    bulb_label.image = bulb_img  # Keep a reference to avoid garbage collection
+    bulb_label.pack(side=tk.LEFT, padx=5, pady=5)
+
+    ttk.Label(top_frame, text=f"VPN IP: {vpn_ip}\nLocal IP: {local_ip}").pack(side=tk.LEFT, padx=5, pady=5)
+    ttk.Button(top_frame, text="Show IP Addresses", command=show_ip_addresses).pack(side=tk.LEFT, padx=5, pady=5)
+
 
     main_frame = ttk.Frame(root, padding="5")
     main_frame.grid(row=1, column=0, columnspan=3, sticky="nsew")
