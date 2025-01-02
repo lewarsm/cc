@@ -29,6 +29,7 @@ from aiohttp import ClientConnectorCertificateError
 #import dns.resolver
 import requests
 import contextlib
+import psutil
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend 
 from cryptography.x509.oid import NameOID, ExtensionOID
@@ -96,8 +97,8 @@ try:
         cert_path = '"' + def_cert_path + '"' # Add quotes for Windows compatibility 
     else: 
         cert_path = shlex.quote(def_cert_path) 
-    except 
-        Exception as e: cert_path = None
+except: #Exception as e: 
+    cert_path = None
 
 
 
@@ -282,24 +283,40 @@ def validate_url_and_check_sql_injection(url):
     
     return True  # Valid URL and no SQL injection
 
+import psutil
+import socket
 
 def is_connected_to_vpn():
     # Get the current network connections
     connections = psutil.net_if_addrs()
-    
+
     # Known VPN interface names (can vary based on the VPN service)
     vpn_interfaces = ["tun0", "tun1", "ppp0", "ppp1", "tap0", "tap1"]
+    vpn_ip = None
+    primary_ip = None
 
     for interface, addrs in connections.items():
-        if interface in vpn_interfaces:
-            for addr in addrs:
-                if addr.family == socket.AF_INET:  # Check if it's an IPv4 address
-                    ip_address = addr.address
-                    print(f"VPN detected: Interface {interface}, IP Address {ip_address}")
-                    return True
+        for addr in addrs:
+            if addr.family == socket.AF_INET:  # Check if it's an IPv4 address
+                ip_address = addr.address
+                if interface in vpn_interfaces:
+                    vpn_ip = ip_address
+                elif not primary_ip:
+                    primary_ip = ip_address
     
-    print("No VPN detected")
-    return False
+    if vpn_ip:
+        print(f"VPN detected: VPN IP Address {vpn_ip}, Primary Network IP Address {primary_ip}")
+        return True, vpn_ip, primary_ip
+
+    print(f"No VPN detected: Primary Network IP Address {primary_ip}")
+    return False, None, primary_ip
+
+# Example usage
+#vpn_active, vpn_ip, primary_ip = is_connected_to_vpn()
+#if vpn_active:
+#    print(f"You are connected to a VPN. VPN IP: {vpn_ip}, Primary IP: {primary_ip}")
+##else:
+ #   print(f"You are not connected to a VPN. Primary IP: {primary_ip}")
 
 def dump_all_variables():
         print("Local")
