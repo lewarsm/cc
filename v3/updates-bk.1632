@@ -93,7 +93,8 @@ CA_path = shlex.quote(def_CA_path)
 # Check if certifi is installed and get the path to the CA certificates
 try: 
     def_cert_path = certifi.where()
-    if os.name == 'nt': # Check if the OS is Windows 
+    if os.name == 'nt': # Check if the OS is Windows
+        CA_path = '"' + CA_path + '"' 
         cert_path = '"' + def_cert_path + '"' # Add quotes for Windows compatibility 
     else: 
         cert_path = shlex.quote(def_cert_path) 
